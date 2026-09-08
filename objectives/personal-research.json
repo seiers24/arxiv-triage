@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "objective_id": "personal-systems-research",
+  "title": "Personal systems research",
+  "research_question": "Which papers suggest practical research directions in memory systems?",
+  "scope": {
+    "include": [
+      "memory hierarchy",
+      "distributed systems",
+      "storage",
+      "accelerator architecture"
+    ],
+    "exclude": [
+      "papers with no systems contribution"
+    ]
+  },
+  "relevance_categories": [
+    {
+      "id": "memory_systems",
+      "description": "Improves memory-system performance, efficiency, or reliability"
+    },
+    {
+      "id": "research_extension",
+      "description": "Offers a concrete and feasible follow-up experiment"
+    }
+  ],
+  "ranking": {
+    "relevance_weight": 10,
+    "technical_importance_weight": 6,
+    "extendability_weight": 4
+  },
+  "extension_priorities": [
+    "work reproducible with public hardware",
+    "experiments feasible within one semester",
+    "open datasets or simulators"
+  ]
+}

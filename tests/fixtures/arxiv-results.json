@@ -1,0 +1,42 @@
+[
+  {
+    "entry_id": "https://arxiv.org/abs/2401.00002v1",
+    "title": "Older Memory Study",
+    "summary": "We evaluate cache placement with a trace-driven simulator.",
+    "authors": [{"name": "Ada Example"}],
+    "published": "2024-01-02T10:00:00Z",
+    "updated": "2024-01-02T10:00:00Z",
+    "journal_ref": null,
+    "doi": null
+  },
+  {
+    "entry_id": "https://arxiv.org/abs/2402.00001v1",
+    "title": "First Revision of a CXL Study",
+    "summary": "We model a disaggregated memory hierarchy.",
+    "authors": [{"name": "Bea Example"}, {"name": "Cal Example"}],
+    "published": "2024-02-01T10:00:00Z",
+    "updated": "2024-02-01T10:00:00Z",
+    "journal_ref": null,
+    "doi": null
+  },
+  {
+    "entry_id": "arXiv:2402.00001v2",
+    "title": "Second Revision of a CXL Study",
+    "summary": "We model a disaggregated memory hierarchy with bandwidth constraints.",
+    "authors": [{"name": "Bea Example"}, {"name": "Cal Example"}],
+    "published": "2024-02-01T10:00:00Z",
+    "updated": "2024-02-03T10:00:00Z",
+    "journal_ref": "Proceedings of Example Systems 2024",
+    "doi": "10.1000/example.1"
+  },
+  {
+    "entry_id": "https://arxiv.org/abs/cs/0112017v3",
+    "title": "Legacy Storage Study",
+    "summary": "We analyze storage scheduling with a mathematical bound.",
+    "authors": [{"name": "Dee Example"}],
+    "published": "2001-12-17T10:00:00Z",
+    "updated": null,
+    "journal_ref": null,
+    "doi": null
+  }
+]

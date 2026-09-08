@@ -13,8 +13,8 @@ is visible in the brief, never dropped.
 |---|---|
 | `AGENTS.md` contract, folder layout | done |
 | `docs/schema.md` + `scripts/validate.py` | not started |
-| `scripts/fetch.py` | not started |
-| `.claude/agents/paper-reader.md` | not started |
+| `scripts/fetch.py` | done — deterministic arXiv fetch, frozen inputs, SQLite upsert, offline fixture |
+| `.claude/agents/paper-reader.md` | done — full-text-first reader contract |
 | `.claude/agents/critic.md` | not started |
 | `.claude/skills/triage-topic/SKILL.md` runbook | not started |
 | `scripts/rank.py` | not started |

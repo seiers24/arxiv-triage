@@ -1,121 +1,154 @@
-# Agent Master File
+# Agent master file
 
-Repository-wide instructions for AI agents. Directory-scoped `AGENTS.md` files
-override this one where they exist — see the index at the bottom.
+Repository-wide instructions for every agent working in `arxiv-triage`.
+Directory-scoped `AGENTS.md` files override this file where the index below
+lists them.
 
-**Read `docs/README.md` first.** This file constrains; the documentation explains.
-Where the two overlap, the documentation is the source of truth and this file
-should link rather than restate — two copies drift, and the agent-facing copy is
-always the unproofread one.
+Read [`docs/README.md`](docs/README.md) first. This file contains shared
+constraints; repository documentation contains the canonical contracts,
+decisions, role descriptions, evaluation procedure, and implementation plans.
+Where they overlap, the documentation is the source of truth.
 
-## What this repository is
+## Project purpose
 
-`arxiv-triage` turns an arXiv query into a ranked, evidence-backed brief:
-which papers matter for datacenter memory and AI infrastructure, what each one
-actually claims, how strong the evidence is, and which are worth extending.
+`arxiv-triage` turns an arXiv query and a versioned research objective into a
+ranked, evidence-backed brief. The objective determines relevance and ranking;
+it never changes whether a paper supports a claim.
 
-Every claim in the output carries an arXiv ID. Every LLM step leaves a trace.
-Every failure is visible in the brief, never silently dropped.
+Every displayed claim must resolve to its exact fetched source and arXiv ID.
+Every model attempt must leave a trace. Screening decisions, degraded source
+fallbacks, unresolved objections, and failures remain visible.
 
-## Instructions
+## Canonical references
 
-### 1. Think and search before assuming
-*Don't assume. Don't hide confusion. Surface tradeoffs.*
+- [`docs/schema.md`](docs/schema.md): JSON contracts and validation rules.
+- [`docs/decisions.md`](docs/decisions.md): accepted design decisions and
+  alternatives.
+- [`docs/evaluation.md`](docs/evaluation.md): offline human evaluation; never a
+  runtime worker prompt.
+- [`docs/roles/orchestrator.md`](docs/roles/orchestrator.md): authority and
+  boundaries of the main orchestrator.
+- [`docs/planning/full-text-pipeline-plan.md`](docs/planning/full-text-pipeline-plan.md): planned
+  screening and full-text implementation.
+- [`objectives/README.md`](objectives/README.md): objective-profile authoring.
 
-- State findings explicitly. A finding stays `unverified` until the critic has
-  checked it against its source (see §3). Peer review is recorded as provenance,
-  not treated as proof: arXiv preprints are the input to this tool, so "not peer
-  reviewed" is the normal case, not a reason to discard.
-- If multiple interpretations exist, present them. Do not pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear about the *task*, stop and ask the user. Name what is
-  confusing. If something is unclear about a *paper*, dispatch a bounded
-  investigation to a worker (§5) and record what came back, including "could
-  not resolve."
+Do not duplicate these contracts in this file.
 
-### 2. Scripts do deterministic work; agents do judgment
-- Fetching from arXiv, validating JSON, ranking, and writing the brief are
-  scripts in `scripts/`. They never call a model. If a step can be done without
-  a model, it must be.
-- Agents read, extract, and critique. That is all. An agent that "calls the
-  arXiv API" is a script wearing a costume; do not create one.
-- When you are unsure which side a step belongs on, it is a script.
+## Shared instructions
 
-### 3. Claims and provenance
-Every extracted claim is a record with:
+### Think before assuming
 
-| Field | Values |
-|---|---|
-| `status` | `unverified` → `supported` \| `unsupported` \| `overclaimed` |
-| `evidence_type` | `simulation` \| `real_hardware` \| `theory` \| `none_stated` |
-| `provenance` | `peer_reviewed` \| `preprint` \| `blog_or_docs` \| `inferred` |
-| `source_span` | the quoted text the claim rests on, or `null` |
+- Surface ambiguity, competing interpretations, and important tradeoffs.
+- Keep a finding `unverified` until the active workflow's critic checks it
+  against the same frozen source.
+- Record peer-review status as provenance, not proof of correctness.
+- State when available evidence cannot resolve a paper-level question.
+- Prefer a simpler approach when it preserves the documented guarantees.
 
-Rules:
-- A claim with `source_span: null` cannot be `supported`.
-- `evidence_type` must match the source. A simulation result described as
-  measured is `overclaimed`, not a nitpick.
-- `inferred` provenance means the agent reasoned it; it is never cited as if the
-  paper said it.
+### Scripts do deterministic work; agents do judgment
 
-### 4. Bounded loops, visible failure
-- One critic pass per paper. On `unsupported` or `overclaimed`, one re-read by
-  the reader. Then the record is marked `unresolved` and surfaced in the brief
-  under its own heading.
-- No agent retries itself more than once. No loop without a counter.
-- A crash, a schema-validation failure, or a missing paper is logged and
-  reported, never swallowed. The brief prints the count of unresolved and
-  failed papers at the top.
+- Scripts own network acquisition, normalization, deduplication, hashing,
+  document extraction, validation, persistence, deterministic screening rules,
+  ranking, and report rendering.
+- Agents own bounded semantic judgments: abstract screening, paper reading,
+  claim extraction, objective assessment, and criticism.
+- Workers never fetch sources, perform basic extraction, invoke scripts, or run
+  other agents.
+- The orchestrator invokes scripts and dispatches workers; it does not perform
+  worker judgments or rewrite worker artifacts.
+- If a step can be performed deterministically, implement it in a script.
 
-### 5. Roles
-There is one orchestrator and two workers. The hierarchy is one level deep.
+### Evidence and objective separation
 
-| Role | What it is | Input → Output | Definition |
-|---|---|---|---|
-| **Orchestrator** | The main session reading this file | a topic → the brief | this file + `.claude/skills/triage-topic/SKILL.md` |
-| **paper-reader** | Worker | one arXiv ID → one schema record | `.claude/agents/paper-reader.md` |
-| **critic** | Adversarial worker | one record + its source → per-claim verdicts | `.claude/agents/critic.md` |
+- Evidence type, provenance, source support, and critic verdict meanings are
+  universal and follow `docs/schema.md`.
+- Research scope, relevance categories, extension priorities, and ranking
+  weights come from the selected objective profile.
+- Bind every objective-dependent artifact to `objective_id` and
+  `objective_hash`.
+- Never compare or combine numeric scores from different objective hashes as
+  though they share a scale.
+- Never cite an inferred statement as something the paper says.
+- A claim without a valid source span cannot be `supported`.
 
-- The orchestrator dispatches, collects, and decides. It does not read papers
-  itself and does not rewrite worker output.
-- Workers return the schema and nothing else. No prose, no summaries outside
-  the fields, no opinions on ranking.
-- The critic gets the record and the source text. It does not get the reader's
-  reasoning, so it cannot be anchored by it.
+### Bounded work and visible outcomes
 
-### 6. Workflow (in order; the skill file is the runbook)
-1. `scripts/fetch.py <query>` → `data/papers.json`
-2. For each paper: dispatch `paper-reader` → `data/records/<id>.json`
-3. `scripts/validate.py` on each record; reject malformed, log, retry once
-4. For each valid record: dispatch `critic` → `data/verdicts/<id>.json`
-5. Apply §4: re-read on failure, then mark `unresolved`
-6. `scripts/rank.py` → `out/brief.md` with arXiv IDs on every claim
-7. Append one line per dispatch to `logs/trace.jsonl`
-   (`paper_id, role, timestamp, validation_pass, retry_count, verdict_summary`)
+- Every loop, retry, batch, and concurrency setting has an explicit bound.
+- Never retry an agent beyond the active schema and runbook allowance.
+- Continue independent work when one candidate or paper fails.
+- Never silently drop a fetched candidate, screening decision, invalid model
+  artifact, extraction failure, abstract-only fallback, or unresolved paper.
+- Do not fill a requested result count by hiding failures or substituting
+  unreported candidates.
+- Preserve raw invalid attempts before correction or retry.
 
-### 7. Output contract
-The schema in `docs/schema.md` is the contract between every script and every
-agent. Change it there first; then the Pydantic model in `scripts/validate.py`;
-then the agent definitions. Never change it in an agent prompt alone.
+### Artifacts and persistence
 
-### 8. Do not
-- Do not build a UI, a vector store, a knowledge graph, or a Docker image.
-  They are listed in `docs/README.md` as next steps; that is where they stay.
-- Do not add a third worker without adding a row to §5 and a reason to
-  `docs/decisions.md`.
-- Do not present a ranked brief without the unresolved-and-failed count.
-- Do not cite anything you did not fetch.
+- Validated JSON artifacts are the complete evidence source of truth.
+- JSONL is the append-only execution ledger, including failed attempts.
+- SQLite is a rebuildable query index over validated artifacts; it must not
+  define a competing contract or become the only copy of a run.
+- A path locates an artifact; a cryptographic hash identifies its exact bytes.
+- Deterministic persistence must be transactional and idempotent where the
+  documented contract requires it.
 
-## Working with this repo
-- Python ≥ 3.12, `uv` for everything. `uv run scripts/<name>.py`.
-- Secrets in `.env` only, never in files that are committed.
-- Model calls, if any are made from Python, log token counts and cost to the
-  same `logs/trace.jsonl`.
-- Design decisions go in `docs/decisions.md` with the alternative considered.
+## Runtime roles
 
-## Index of directory-scoped AGENTS.md
-None yet. Add a row here when you add one.
+Role-specific behavior belongs in the linked role or worker definition, not in
+this repository-wide file.
+
+| Role | Kind | Definition |
+|---|---|---|
+| Orchestrator | Main interactive session | `docs/roles/orchestrator.md`; executable runbook in `.claude/skills/triage-topic/SKILL.md` |
+| Paper screener | Planned batched worker | `.claude/agents/paper-screener.md` |
+| Paper reader | Per-paper worker | `.claude/agents/paper-reader.md` |
+| Critic | Per-record adversarial worker | `.claude/agents/critic.md` |
+
+If a required definition or runbook is missing, report that the workflow is not
+implemented; do not improvise an undocumented role.
+
+The hierarchy remains one level deep: the main orchestrator may dispatch
+workers, and workers may not dispatch other agents.
+
+## Change protocol
+
+The schema is the contract between agents and scripts. For a contract change:
+
+1. Record or amend the design decision when architecture or tradeoffs change.
+2. Update `docs/schema.md` and increment incompatible schema versions.
+3. Update Pydantic validation in `scripts/validate.py`.
+4. Update affected worker definitions and the orchestration runbook.
+5. Update persistence, deterministic scripts, fixtures, and tests.
+6. Update evaluation labels or metrics only when their meaning changes; never
+   tune them merely to make a result pass.
+
+## Project prohibitions
+
+- Do not build a UI, vector store, knowledge graph, container platform, or
+  other deferred system unless a user explicitly moves it into scope and the
+  decision is recorded.
+- Do not add or repurpose a worker role without a decision entry and updated
+  role index.
+- Do not present a ranked brief without all counts required by the active
+  schema and runbook.
+- Do not cite or analyze a source that was not fetched and frozen for the run.
+- Do not treat an abstract-only packet as full-text evidence.
+- Do not expose golden evaluation labels to runtime workers.
+
+## Working with this repository
+
+- Use Python 3.12 or newer and `uv` for Python commands.
+- Keep secrets in `.env`; never commit them or copy them into artifacts.
+- Model calls made from Python must record token counts and cost when available
+  in the same execution ledger.
+- Record design decisions in `docs/decisions.md`, including alternatives and
+  tradeoffs.
+- Preserve unrelated user changes in a dirty worktree.
+
+## Directory-scoped instructions
+
+None currently.
 
 | Path | Scope |
 |---|---|
-| | |
+| — | — |

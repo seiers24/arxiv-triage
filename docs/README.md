@@ -10,6 +10,10 @@ the system. Where they overlap, this folder wins.
 - `roles/orchestrator.md` — human-readable authority and boundaries for the main orchestrator
 - `planning/full-text-pipeline-plan.md` — implementation plan for abstract screening and HTML/PDF/abstract source fallback
 - `future_extensions.md` — deliberately deferred capabilities
+- `plans/01-core-investigation-platform.md` — shared artifacts, storage, agents, tracing, and workflow invariants
+- `plans/02-workshop-analysis.md` — the first vertical slice and its EDGE 2026 acceptance test
+- `plans/03-proposal-relevance.md` — proposal compilation, literature discovery, and novelty-impact reporting
+- `specs/01-core-investigation-platform.md` — proposed implementation contract for the shared platform
 
 ## Why this design
 - Deterministic steps are scripts; only reading, extraction, and critique use a model.

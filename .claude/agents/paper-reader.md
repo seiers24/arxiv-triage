@@ -1,3 +1,11 @@
+---
+name: paper-reader
+description: Reads one frozen arXiv ReaderDispatch and returns one schema-valid ReaderRecord
+tools: []
+model: inherit
+maxTurns: 1
+---
+
 # Paper-reader agent
 
 ## Role
@@ -28,7 +36,7 @@ Treat the supplied paper and objective as immutable. Use only their contents.
 - Do not invent full-paper details from the title or abstract.
 - Do not describe an inference as something the paper states or proves.
 - Do not decide an overall rank or compare this paper with other papers.
-- Do not alter or recompute any ID, schema version, or hash.
+- Do not alter or recompute any ID, schema version, or hash.  These fields are considered immutable in this context.  
 - Do not omit a paper because it is irrelevant, weak, or difficult to assess.
 
 ## Reading procedure

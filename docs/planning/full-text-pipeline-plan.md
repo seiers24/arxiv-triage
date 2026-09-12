@@ -59,6 +59,18 @@ records include the candidate ID, objective hash, state, concise reason, and
 any abstract spans supporting the decision. A deterministic cap may limit a
 run only after these states and reasons have been preserved.
 
+The screener is a conservative gate, not a ranker. It may emit `screened_out`
+only when the supplied title and abstract establish an explicit exclusion or
+leave no plausible connection to the objective. Missing experimental detail,
+an unclear contribution, or uncertainty about the connection routes the
+candidate to `needs_review`; absence of detail in an abstract is not evidence
+that the full paper is irrelevant.
+
+A processing budget must not relabel an otherwise selected candidate as
+`screened_out`. Candidates beyond a deterministic run cap remain visibly
+deferred for a later run. Evaluation uses a predeclared, deterministically
+selected audit sample of `screened_out` candidates to measure false negatives.
+
 ### Gate
 
 The role index has no duplicated prompts, the new worker is authorized by a
@@ -98,6 +110,10 @@ Use these source values:
 - Bind every reader and critic artifact to `packet_hash` and `objective_hash`.
 - Add `source_locator` to each non-null claim span and validate it against the
   selected paragraph.
+- Require the reader to use the abstract for its initial problem-and-method
+  synopsis, then verify and correct that synopsis against the selected full
+  text before returning it. For an abstract-only packet, require an explicit
+  statement that full-paper verification was unavailable.
 - Require the reader to report `source_scope`; prohibit strong judgments about
   unobserved methods, baselines, limitations, or novelty for abstract-only
   packets.
@@ -224,10 +240,12 @@ identical packet hashes and paragraph IDs.
 ### Worker definitions
 
 - Create `.claude/agents/paper-screener.md` with a batch-size limit, conservative
-  state rubric, exact output contract, and no authority to fetch or rank.
+  state rubric, exact output contract, and no authority to fetch or rank. Its
+  default under material uncertainty is `needs_review`, not `screened_out`.
 - Update `.claude/agents/paper-reader.md` to consume `FrozenPaperPacket`, cite
-  paragraph/page locators, disclose `source_scope`, and avoid abstract-only
-  overreach.
+  paragraph/page locators, draft the problem and method from the abstract,
+  verify and correct them against full text, disclose `source_scope`, and avoid
+  abstract-only overreach.
 - Complete `.claude/agents/critic.md` to receive the identical packet,
   objective, and validated reader record; check claim spans, evidence type,
   objective-relevance chain, and extension proposal independently.

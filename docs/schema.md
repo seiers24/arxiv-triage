@@ -16,15 +16,14 @@ hash-addressed research objective that supplies the relevance categories and
 ranking weights.
 
 The existing sections below remain the normative legacy `1.0` contract. The
-following Core `2.0` section records approved incompatible contract changes for
-the platform specification. It does not authorize changes to agent definitions
-until those behavior files are separately reviewed.
+following schema-version `2.0` section records approved incompatible contract
+changes for the platform specification.
 
-## Approved Core 2.0 contract changes
+## Approved schema-version 2.0 contract changes
 
 ### Minimal `ReaderRecord`
 
-Core `2.0` uses one evidence-bearing reader collection. A `ReaderRecord`
+The current investigation contract uses one evidence-bearing reader collection. A `ReaderRecord`
 contains exactly the following top-level fields:
 
 | Field | Type | Required | Constraints | Description |
@@ -42,14 +41,14 @@ contains exactly the following top-level fields:
 | `claims` | array of claim objects | yes | may be empty; claim IDs unique within the record | The only universal evidence-bearing collection. |
 | `warnings` | array of strings | yes | items non-empty; may be empty only when `claims` is non-empty | Visible degradation, ambiguity, or absence of extractable claims. |
 
-Unknown top-level fields are rejected. In particular, Core `2.0` does not have
+Unknown top-level fields are rejected. In particular, this contract does not have
 `contributions`, `experimental_evidence`, `limitations`, `assumptions`, or
 `focused_observations`. Contributions, results, methods, problems, and
 limitations that need evidence are represented through `claims[].claim_kind`.
 Reader focus questions guide extraction but do not create a parallel canonical
 observation collection.
 
-Each claim contains the Core `2.0` fields defined in
+Each claim contains the fields defined in
 `docs/specs/01-core-investigation-platform.md`: `claim_id`, `claim_kind`,
 `text`, `source_locator`, `evidence_modality`, `execution_environment`,
 `provenance`, and `status`. `claim_kind` is one of `problem`, `method`,
@@ -79,7 +78,7 @@ validators, but callers do not validate or promote reader fragments
 independently. It does not decide whether a source semantically supports a
 claim; the critic owns that bounded judgment.
 
-### Core 2.0 lifecycle and corpus terminology
+### Current lifecycle and corpus terminology
 
 - `invalid` is terminal for one physical agent run. It is not followed by
   `agent_run.failed` for the same attempt. A permitted retry is a new physical
@@ -113,9 +112,9 @@ included = complete + analysis_unresolved + failed
 `expected` is therefore the number of entries in the frozen corpus, not the
 number of papers sent for analysis.
 
-### Core 2.0 shared scalar and hash rules
+### Shared scalar and hash rules
 
-Core `2.0` identifiers contain lowercase ASCII letters and digits separated by
+Identifiers contain lowercase ASCII letters and digits separated by
 single `-`, `_`, `.`, or `:` characters. They start with a letter and contain
 no whitespace or slash. Repository paths are non-empty, normalized, relative
 POSIX paths: absolute paths, backslashes, and `.` or `..` segments are rejected.
@@ -130,7 +129,7 @@ own hash field. A record's `input_hash` is instead a reference to the exact
 validated task and must equal that task's self-hash.
 
 `InvestigationSpec.requested_outputs` is a unique, non-empty subset of
-`report` and `papers_csv`; its `uncertainty_policy` is `escalate` in Core 2.0.
+`report` and `papers_csv`; its `uncertainty_policy` is `escalate` in this contract.
 Source formats are `html`, `pdf_text`, or `abstract`; retrieval method is
 `direct` or `fallback`. Paper identity status is `unresolved`,
 `resolved_exact`, `resolved_probable`, or `ambiguous`.
@@ -152,7 +151,8 @@ identity and hash matching, exact claim coverage, and evidence-reference checks.
 `CriticRecord` contains its role/job/run/investigation/paper/reader/input
 identity, `verdicts`, `objective_assessments`, and `human_review_reasons`.
 Every reader claim has exactly one verdict. Every objective criterion has
-exactly one assessment. Because Core 2.0 supports only `integer_0_5`, each
+exactly one assessment. Because the current contract supports only
+`integer_0_5`, each
 assessment has a required integer `score` from 0 through 5 and has no `label`
 field. Assessment evidence IDs are unique and may name only claims marked
 `supported` in that critic record. Human review is required exactly when
@@ -196,7 +196,7 @@ single parsing, binding, accounting, and reference-resolution gateway.
 ### Agent run, validation, outcome, and trace
 
 `AgentRun` is the complete physical-attempt projection. It contains the fields
-defined for `agent_runs` in the Core 2.0 platform spec plus `schema_version` and
+defined for `agent_runs` in the platform specification plus `schema_version` and
 `validation_hash`. Role/job pairs are `paper_reader`/`paper_read`,
 `critic`/`paper_critique`, and `reviewer`/`corpus_review`; paper workers require
 `paper_id`, while corpus roles require null. Attempts are 1 or 2. Status is
@@ -221,7 +221,7 @@ start/completion/duration, input path/hash, raw/validation/canonical path-hash
 pairs, usage, and nullable error. Its terminal artifact/error invariants are
 identical to `AgentRun`.
 
-`TraceEvent` uses the fields in section 9.4 of the Core 2.0 platform spec. Event
+`TraceEvent` uses the fields in section 9.4 of the platform specification. Event
 types are `agent_run.started`, `agent_run.output_received`,
 `agent_run.invalid`, `agent_run.completed`, `agent_run.failed`, and
 `agent_run.reconciled`. A start event has sequence 1. Completed/reconciled

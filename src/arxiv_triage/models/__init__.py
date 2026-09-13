@@ -1,4 +1,4 @@
-"""Schema-version 2.0 core contracts."""
+"""Current versioned investigation contracts."""
 
 from .base import (
     SCHEMA_VERSION,

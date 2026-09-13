@@ -1,6 +1,6 @@
 ---
 name: triage-topic
-description: Runs one bounded, auditable Core 2.0 arXiv investigation through deterministic workflow operations and role-specific workers
+description: Runs one bounded, auditable arXiv investigation through deterministic workflow operations and role-specific workers
 ---
 
 # Triage an arXiv topic
@@ -11,9 +11,10 @@ delegate beyond the one worker level.
 
 ## Preflight gate
 
-Core `2.0` is not runnable by assembling legacy commands. Before starting,
-confirm that all command entry points and canonical task/result validators
-named below exist and target schema `2.0`. In particular, do not dispatch the
+The current investigation workflow is not runnable by assembling legacy
+commands. Before starting, confirm that all command entry points and canonical
+task/result validators named below exist and target the schema version declared
+by the frozen inputs. In particular, do not dispatch the
 paper screener until `ScreeningTask` and `ScreeningRecord` are defined and
 validated, and do not dispatch any worker without a finalized validator.
 
@@ -23,7 +24,7 @@ implemented at that gate. Never substitute `scripts/fetch.py`,
 `scripts/validate.py`, or `scripts/db.py` while they still implement legacy
 schema `1.0` behavior.
 
-The intended Core command surface is:
+The intended command surface is:
 
 ```text
 uv run scripts/workflow.py create --spec <path> --profile <path> --search-plan <path>
@@ -40,14 +41,14 @@ uv run scripts/db.py rebuild
 
 Use these commands only after their implemented help and schema version match
 the specification. Component discovery and screening entry points must be
-named by the active component; Core must not invent them.
+named by the active component; the shared workflow must not invent them.
 
 ## Required inputs and bounds
 
 Obtain before work begins:
 
 - a non-empty arXiv query;
-- paths to a schema-valid Core `2.0` investigation spec, objective profile,
+- paths to a schema-valid investigation spec, objective profile,
   and search plan;
 - a positive candidate limit and screener batch-size limit;
 - positive `max_concurrent_papers`, `max_concurrent_fetches`, and
@@ -69,7 +70,7 @@ papers. Never use an unbounded loop.
 
 ### 1. Validate and freeze inputs
 
-Run the Core create operation with the exact spec, profile, and search-plan
+Run the create operation with the exact spec, profile, and search-plan
 paths. Let deterministic code validate structure and hashes and write the
 frozen snapshots. Do not edit a snapshot after creation. Record the resulting
 investigation ID and confirm `inputs_validated` with the status operation.
@@ -103,7 +104,7 @@ ambiguous candidate as excluded.
 
 ### 3. Prepare sources for included papers
 
-For included entries only, use the Core source-fetch operation through a pool
+For included entries only, use the source-fetch operation through a pool
 bounded by `max_concurrent_fetches` and `max_concurrent_papers`. Deterministic
 code tries the documented exact-version source hierarchy and preserves raw
 bytes, extraction reports, hashes, warnings, and fallback reasons.
@@ -194,7 +195,7 @@ validated artifacts. Do not announce success if any required gate is open.
 
 ## Recovery
 
-On restart, run the Core reconcile operation before new dispatch. Reconcile
+On restart, run the reconcile operation before new dispatch. Reconcile
 canonical JSON and append-only trace events first, then rebuild or repair the
 SQLite projection. Never infer evidence or overwrite an old attempt during
 recovery. Resume only jobs that deterministic workflow guards report eligible,

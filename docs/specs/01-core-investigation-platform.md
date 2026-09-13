@@ -264,7 +264,7 @@ sequenceDiagram
 These summaries establish implementation shape. `docs/schema.md` will contain
 the normative JSON Schema/Pydantic definitions when implementation begins.
 
-Core `2.0` identifiers start with a lowercase ASCII letter and continue with
+Identifiers start with a lowercase ASCII letter and continue with
 lowercase letters or digits separated by single `-`, `_`, `.`, or `:`
 characters. Paths are normalized repository-relative POSIX paths without dot
 segments or backslashes. Artifact timestamps are RFC 3339 UTC strings with the
@@ -620,7 +620,7 @@ outcome. `input_hash` is the task self-hash excluding only that field.
 Verdict status is `supported`, `unsupported`, or `overclaimed`. Every reader
 claim receives exactly one verdict. Assessments may cite only claims marked
 `supported` in the same critic record. Every declared objective criterion has
-exactly one assessment. Core `2.0` defines only `integer_0_5`, so `score` is a
+exactly one assessment. The current schema defines only `integer_0_5`, so `score` is a
 required integer and `label` is not a field. Human review is derived from a
 non-empty `human_review_reasons` array; no duplicate boolean is serialized.
 One `validate_critic_output(task, raw_output)` gateway owns parsing and every

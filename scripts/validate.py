@@ -529,10 +529,11 @@ class TraceEvent(ContractModel):
         return self
 
 
-# Core 2.0 uses the package models as its canonical implementation. These lazy
-# facades keep this legacy module's 1.0 names and import behavior unchanged
+# The current investigation schema uses the package models as its canonical
+# implementation. These lazy facades keep this legacy module's 1.0 names and
+# import behavior unchanged
 # while giving deterministic callers one validation entry point per worker.
-def validate_core_v2_reader_output(
+def validate_investigation_reader_output(
     task: object,
     value: object,
 ) -> object:
@@ -541,28 +542,28 @@ def validate_core_v2_reader_output(
     return validate_reader_output(task, value)
 
 
-def validate_core_v2_critic_output(task: object, value: object) -> object:
+def validate_investigation_critic_output(task: object, value: object) -> object:
     from arxiv_triage.models.critic import validate_critic_output
 
     return validate_critic_output(task, value)
 
 
-def validate_core_v2_reviewer_output(task: object, value: object) -> object:
+def validate_investigation_reviewer_output(task: object, value: object) -> object:
     from arxiv_triage.models.reviewer import validate_reviewer_output
 
     return validate_reviewer_output(task, value)
 
 
-def validate_core_v2_run_artifact(
+def validate_investigation_run_artifact(
     artifact_kind: Literal["agent_run", "validation", "outcome", "trace_event"],
     value: object,
 ) -> object:
-    """Validate one exact Core 2.0 deterministic run artifact."""
+    """Validate one deterministic run artifact against the current schema."""
 
     from arxiv_triage.models.run import (
         AgentRun,
         OutcomeRecord,
-        TraceEvent as CoreV2TraceEvent,
+        TraceEvent as InvestigationTraceEvent,
         ValidationRecord,
     )
 
@@ -570,7 +571,7 @@ def validate_core_v2_run_artifact(
         "agent_run": AgentRun,
         "validation": ValidationRecord,
         "outcome": OutcomeRecord,
-        "trace_event": CoreV2TraceEvent,
+        "trace_event": InvestigationTraceEvent,
     }[artifact_kind]
     if isinstance(value, (str, bytes, bytearray)):
         return contract.model_validate_json(value)

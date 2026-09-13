@@ -1,11 +1,11 @@
-# Core 2.0 implementation review gates
+# Investigation contract implementation review
 
-**Status:** exact Core 2.0 contracts approved; agent behavior under review
+**Status:** exact contracts and reviewed agent behavior approved
 
 **Created:** 2026-09-12
 
 This document tracks decisions and files that must be reviewed before the
-core `2.0` implementation is committed, pushed, or used as an authoritative
+investigation implementation is committed, pushed, or used as an authoritative
 agent workflow. It is a review checklist, not an agent instruction file.
 
 ## Safe implementation scope in progress
@@ -57,7 +57,7 @@ and the fresh index is reversible.
 
 ## Approved minimal ReaderRecord decision
 
-The Core `2.0` reader record has one evidence-bearing collection, `claims`, and
+The current reader record has one evidence-bearing collection, `claims`, and
 retains only its identity metadata, `problem`, `method`, `claims`, and
 `warnings`. `contributions`, `experimental_evidence`, `limitations`,
 `assumptions`, and `focused_observations` are removed from the universal
@@ -106,9 +106,10 @@ included = complete + analysis_unresolved + failed
 `expected` is therefore the total frozen corpus size, while analysis outcome
 counts cover included papers only.
 
-## Remaining agent-behavior files requiring explicit approval
+## Approved agent-behavior files
 
-Any changes to the following are behavior changes and remain pending review:
+The following behavior files are approved with the reviewed changes present in
+the working tree:
 
 - `AGENTS.md`
 - `docs/roles/orchestrator.md`
@@ -121,8 +122,7 @@ Any changes to the following are behavior changes and remain pending review:
 - dispatcher correction prompts, model routing, retry prompts, and component
   rubrics wherever implemented
 
-These files must not be committed or pushed as part of the core rollout until
-their diffs have been presented for human review and explicitly approved.
+Future semantic changes to these files still require a clear human-review diff.
 
 ## Tools intentionally out of scope
 

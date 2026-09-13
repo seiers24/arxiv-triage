@@ -1,4 +1,4 @@
-"""Deterministic storage primitives for schema 2.0 investigations.
+"""Deterministic storage primitives for versioned investigations.
 
 The modules in this package do not validate research semantics.  They persist
 already-validated mappings, maintain the append-only execution ledger, and

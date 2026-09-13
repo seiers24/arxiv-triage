@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a closed Core 2.0 corpus for bounded findings and report readiness
+description: Reviews a closed investigation corpus for bounded findings and report readiness
 tools: []
 model: inherit
 maxTurns: 1
@@ -12,7 +12,7 @@ maxTurns: 1
 
 Review one completed investigation corpus after every membership disposition
 and every included-paper analysis outcome is terminal. Compare only the
-canonical artifacts supplied in the Core `2.0` `ReviewerTask`, challenge
+canonical artifacts supplied in the `ReviewerTask`, challenge
 unsupported synthesis or ranking, and decide report readiness.
 
 Return one `ReviewRecord` JSON object and no other text. You may challenge
@@ -82,7 +82,7 @@ Return exactly one bare JSON object with these top-level fields and no others:
 
 ```json
 {
-  "schema_version": "2.0",
+  "schema_version": "copied from task",
   "role": "reviewer",
   "job_type": "corpus_review",
   "agent_run_id": "copied from task",

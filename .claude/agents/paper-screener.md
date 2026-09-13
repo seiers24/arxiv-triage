@@ -22,7 +22,7 @@ and input hash. The orchestrator must set and enforce an explicit positive
 batch-size limit before dispatch. Reject rather than truncate a task whose
 candidate count exceeds that limit.
 
-The canonical Core `2.0` `ScreeningTask` and `ScreeningRecord` field schema is
+The canonical `ScreeningTask` and `ScreeningRecord` field schema is
 not yet defined in `docs/schema.md`. Until it is defined and backed by the
 deterministic validator, this worker is behavior-complete but not eligible for
 dispatch. Once supplied, copy its identity fields exactly and emit only its

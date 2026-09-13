@@ -1,4 +1,4 @@
-"""Rebuildable SQLite projection for schema 2.0 artifacts.
+"""Rebuildable SQLite projection for versioned investigation artifacts.
 
 The index accepts already-validated, already-projected rows.  It intentionally
 does not infer research semantics from JSON artifacts; that mapping belongs to
@@ -19,7 +19,7 @@ from typing import Any, Iterator
 
 
 class StorageSchemaError(RuntimeError):
-    """Raised when a database does not match the schema 2.0 projection."""
+    """Raised when a database does not match the current schema projection."""
 
 
 class ProjectionConflictError(RuntimeError):
@@ -431,7 +431,7 @@ class SQLiteIndex:
             }
             if not sentinel_columns.issubset(actual):
                 raise StorageSchemaError(
-                    f"existing table {table!r} is incompatible with schema 2.0; "
+                    f"existing table {table!r} is incompatible with the current schema; "
                     "migration policy is not defined"
                 )
 

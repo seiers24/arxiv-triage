@@ -27,7 +27,7 @@ terminal states, and rebuildable SQLite index needed to audit the run.
 - Invoke deterministic scripts for discovery, normalization, deduplication,
   hashing, source acquisition, extraction, validation, canonical persistence,
   indexing, ranking, and rendering.
-- Dispatch the paper screener in bounded batches only after its Core `2.0`
+- Dispatch the paper screener in bounded batches only after its canonical
   task/result contract and validator exist. Preserve exactly one decision for
   every discovered candidate.
 - Map `selected` and `needs_review` to `included`; route both to source

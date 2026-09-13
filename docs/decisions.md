@@ -124,10 +124,10 @@ packets must be labeled and gated in the final brief.
 
 * **Date made:** 2026-09-07
 
-## Minimal Core 2.0 ReaderRecord
+## Minimal ReaderRecord for schema version 2.0
 
 * **Decision, stated simply:**
-The Core `2.0` `ReaderRecord` has one evidence-bearing collection: `claims`.
+The current `ReaderRecord` has one evidence-bearing collection: `claims`.
 It retains the run, investigation, paper, source, and input identity fields plus
 `problem`, `method`, `claims`, and `warnings`. The proposed parallel collections
 `contributions`, `experimental_evidence`, `limitations`, `assumptions`, and
@@ -169,10 +169,11 @@ gateway still requires documented internal checks to remain auditable.
 
 * **Date made:** 2026-09-12
 
-## Minimal exact Core 2.0 worker and run contracts
+## Minimal exact worker and run contracts
 
 * **Decision, stated simply:**
-Core `2.0` now has closed `CriticTask`, `CriticRecord`, `ReviewerTask`,
+The current investigation schema has closed `CriticTask`, `CriticRecord`,
+`ReviewerTask`,
 `ReviewRecord`, `AgentRun`, `ValidationRecord`, `OutcomeRecord`, and
 `TraceEvent` contracts. Reader, critic, and reviewer output each passes through
 one project-owned validation gateway. Reader and critic tasks embed the exact

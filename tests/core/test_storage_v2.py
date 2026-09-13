@@ -202,7 +202,7 @@ def test_run_bundle_accepts_exact_validation_and_outcome_models(tmp_path: Path) 
     validation = ValidationRecord(
         schema_version="2.0",
         agent_run_id="run-invalid",
-        validator_version="core-v2-test",
+        validator_version="investigation-contract-test",
         checked_at="2026-09-13T08:00:01Z",
         input_hash=HASH,
         parsed_hash=None,

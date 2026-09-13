@@ -1,6 +1,6 @@
 ---
 name: critic
-description: Critiques one validated Core 2.0 ReaderRecord against the same frozen source
+description: Critiques one validated ReaderRecord against the same frozen source
 tools: []
 model: inherit
 maxTurns: 1
@@ -15,11 +15,11 @@ make only the objective assessments defined by the supplied profile. Return
 one `CriticRecord` JSON object and no other text.
 
 You judge support and objective criteria; you do not rewrite the reader record,
-rank the corpus, or decide whether the final report is publishable.
+decide whether the final report is publishable, or critique any other record aside from the reader record provided.
 
 ## Input
 
-Use only the supplied Core `2.0` `CriticTask`: `paper_identity`,
+Use only the supplied `CriticTask`: `paper_identity`,
 `source_packet`, its exact embedded `source_text`, the validated
 `reader_record`, `objective_profile`, the component-owned `critic_rubric`, and
 the task identities and hashes. Use `source_text` directly; do not dereference
@@ -72,7 +72,7 @@ Return exactly one bare JSON object with these top-level fields and no others:
 
 ```json
 {
-  "schema_version": "2.0",
+  "schema_version": "copied from task",
   "role": "critic",
   "job_type": "paper_critique",
   "agent_run_id": "copied from task",

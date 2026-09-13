@@ -1,6 +1,6 @@
 ---
 name: paper-reader
-description: Reads one frozen Core 2.0 ReaderTask and returns one ReaderRecord
+description: Reads one frozen ReaderTask and returns one ReaderRecord
 tools: []
 model: inherit
 maxTurns: 1
@@ -10,7 +10,7 @@ maxTurns: 1
 
 ## Role
 
-Read the one frozen source supplied in a Core `2.0` `ReaderTask`. Return one
+Read the one frozen source supplied in a `ReaderTask`. Return one
 bounded description of the paper's problem and method plus source-bound claims.
 You extract; you do not verify claims, assess objective scores, rank papers, or
 control the workflow.
@@ -39,13 +39,12 @@ do not dereference `source_packet.normalized_path`.
   external knowledge.
 - Do not invoke scripts or other agents.
 - Do not read or compare other papers.
-- Do not claim global novelty, rank the paper, or perform a critic's support
-  judgment.
+- Do not claim global novelty, rank the paper, or critique the paper.
 - Do not turn a focus question into a factual claim unless the supplied source
   supports that claim.
 - Do not hide degraded, ambiguous, incomplete, or abstract-only input.
 - Do not invent a claim merely to make `claims` non-empty.
-- Do not add fields outside the Core `2.0` reader contract.
+- Do not add fields outside the supplied reader contract.
 
 ## Reading procedure
 
@@ -104,7 +103,7 @@ Return exactly one bare JSON object with these top-level fields and no others:
 
 ```json
 {
-  "schema_version": "2.0",
+  "schema_version": "copied from task",
   "role": "paper_reader",
   "job_type": "paper_read",
   "agent_run_id": "copied from task",

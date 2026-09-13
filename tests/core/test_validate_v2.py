@@ -21,14 +21,14 @@ def load_legacy_validator():
     return module
 
 
-def test_core_v2_run_facade_is_additive_to_legacy_contracts() -> None:
+def test_investigation_run_facade_is_additive_to_legacy_contracts() -> None:
     validator = load_legacy_validator()
     assert validator.SCHEMA_VERSION == "1.0"
 
     payload = {
         "schema_version": "2.0",
         "agent_run_id": "run-invalid",
-        "validator_version": "core-v2-test",
+        "validator_version": "investigation-contract-test",
         "checked_at": "2026-09-13T08:00:01Z",
         "input_hash": "a" * 64,
         "parsed_hash": None,
@@ -42,13 +42,13 @@ def test_core_v2_run_facade_is_additive_to_legacy_contracts() -> None:
         "errors": ["missing required field"],
         "referenced_hashes": [],
     }
-    record = validator.validate_core_v2_run_artifact(
+    record = validator.validate_investigation_run_artifact(
         "validation", json.dumps(payload).encode("utf-8")
     )
     assert record.model_dump(mode="json") == payload
 
 
-def test_core_v2_reader_facade_uses_embedded_source_text(monkeypatch) -> None:
+def test_investigation_reader_facade_uses_embedded_source_text(monkeypatch) -> None:
     validator = load_legacy_validator()
     expected = object()
 
@@ -59,7 +59,7 @@ def test_core_v2_reader_facade_uses_embedded_source_text(monkeypatch) -> None:
 
     monkeypatch.setattr(reader_models, "validate_reader_output", validate)
     assert (
-        validator.validate_core_v2_reader_output(
+        validator.validate_investigation_reader_output(
             "task-with-source-text", b"raw reader output"
         )
         is expected

@@ -166,18 +166,35 @@ def ensure_critic_dispatch_eligible(
 
 @dataclass(frozen=True, slots=True)
 class Accounting:
+    """Whole-corpus disposition plus terminal outcomes for included papers."""
+
     expected: int
+    included: int
+    excluded: int
+    membership_unresolved: int
     complete: int
-    unresolved: int
+    analysis_unresolved: int
     failed: int
 
     def __post_init__(self) -> None:
-        if min(self.expected, self.complete, self.unresolved, self.failed) < 0:
+        if min(
+            self.expected,
+            self.included,
+            self.excluded,
+            self.membership_unresolved,
+            self.complete,
+            self.analysis_unresolved,
+            self.failed,
+        ) < 0:
             raise GuardViolation("accounting values must be non-negative")
 
     @property
-    def terminal_total(self) -> int:
-        return self.complete + self.unresolved + self.failed
+    def corpus_disposition_total(self) -> int:
+        return self.included + self.excluded + self.membership_unresolved
+
+    @property
+    def included_terminal_total(self) -> int:
+        return self.complete + self.analysis_unresolved + self.failed
 
 
 def ensure_reviewer_barrier(
@@ -185,8 +202,10 @@ def ensure_reviewer_barrier(
     included_paper_states: Mapping[str, PaperState],
     accounting: Accounting,
 ) -> None:
-    if len(included_paper_states) != accounting.expected:
-        raise GuardViolation("paper-state count does not equal expected corpus count")
+    if accounting.corpus_disposition_total != accounting.expected:
+        raise GuardViolation("corpus dispositions do not equal expected corpus count")
+    if len(included_paper_states) != accounting.included:
+        raise GuardViolation("paper-state count does not equal included corpus count")
     nonterminal = {
         paper_id: state
         for paper_id, state in included_paper_states.items()
@@ -200,11 +219,11 @@ def ensure_reviewer_barrier(
     observed = Counter(included_paper_states.values())
     expected_counts = {
         PaperState.COMPLETE: accounting.complete,
-        PaperState.UNRESOLVED: accounting.unresolved,
+        PaperState.ANALYSIS_UNRESOLVED: accounting.analysis_unresolved,
         PaperState.FAILED: accounting.failed,
     }
-    if accounting.terminal_total != accounting.expected:
-        raise GuardViolation("terminal accounting does not equal expected corpus count")
+    if accounting.included_terminal_total != accounting.included:
+        raise GuardViolation("included terminal accounting does not equal included count")
     for state, expected in expected_counts.items():
         if observed[state] != expected:
             raise GuardViolation(

@@ -1,8 +1,10 @@
 # Schema
 
-This document defines the structured input and output contracts for the
-[paper-reader agent](../.claude/agents/paper-reader.md) and the
-[critic agent](../.claude/agents/critic.md).
+This document defines the structured input and output contracts for Core
+workers, including the [paper-reader agent](../.claude/agents/paper-reader.md),
+[critic agent](../.claude/agents/critic.md), and
+[reviewer agent](../.claude/agents/reviewer.md), plus their deterministic run
+artifacts.
 
 Here, “schema” refers to the JSON artifacts exchanged between agents and
 deterministic scripts—not the SQLite database schema. These contracts define
@@ -12,6 +14,222 @@ does not cover full-paper text or external retrieval. The contract is
 objective-neutral: a run binds the same evidence rules to one explicit,
 hash-addressed research objective that supplies the relevance categories and
 ranking weights.
+
+The existing sections below remain the normative legacy `1.0` contract. The
+following Core `2.0` section records approved incompatible contract changes for
+the platform specification. It does not authorize changes to agent definitions
+until those behavior files are separately reviewed.
+
+## Approved Core 2.0 contract changes
+
+### Minimal `ReaderRecord`
+
+Core `2.0` uses one evidence-bearing reader collection. A `ReaderRecord`
+contains exactly the following top-level fields:
+
+| Field | Type | Required | Constraints | Description |
+|---|---|---:|---|---|
+| `schema_version` | string | yes | exactly `2.0` | Version of this artifact contract. |
+| `role` | string | yes | exactly `paper_reader` | Producing role. |
+| `job_type` | string | yes | exactly `paper_read` | Logical job type. |
+| `agent_run_id` | string | yes | matches the physical run | Producing physical attempt. |
+| `investigation_id` | string | yes | matches the task | Investigation being analyzed. |
+| `paper_id` | string | yes | matches the task and source packet | Frozen deduplicated paper identity. |
+| `source_document_id` | string | yes | matches the task's frozen source packet | Exact normalized source read. |
+| `input_hash` | string | yes | 64 lowercase hexadecimal characters; matches the task | Exact dispatched input. |
+| `problem` | string | yes | non-empty | Concise problem addressed by the paper. |
+| `method` | string | yes | non-empty | Concise method used by the paper. |
+| `claims` | array of claim objects | yes | may be empty; claim IDs unique within the record | The only universal evidence-bearing collection. |
+| `warnings` | array of strings | yes | items non-empty; may be empty only when `claims` is non-empty | Visible degradation, ambiguity, or absence of extractable claims. |
+
+Unknown top-level fields are rejected. In particular, Core `2.0` does not have
+`contributions`, `experimental_evidence`, `limitations`, `assumptions`, or
+`focused_observations`. Contributions, results, methods, problems, and
+limitations that need evidence are represented through `claims[].claim_kind`.
+Reader focus questions guide extraction but do not create a parallel canonical
+observation collection.
+
+Each claim contains the Core `2.0` fields defined in
+`docs/specs/01-core-investigation-platform.md`: `claim_id`, `claim_kind`,
+`text`, `source_locator`, `evidence_modality`, `execution_environment`,
+`provenance`, and `status`. `claim_kind` is one of `problem`, `method`,
+`contribution`, `result`, `limitation`, `assumption`, or `novelty_claim`.
+Contribution and assumption items therefore use the same evidence and
+provenance machinery as every other claim instead of separate top-level
+collections. The other claim enums and exact source-locator rules remain
+unchanged.
+
+An empty `claims` array is valid. It must not be replaced with a fabricated or
+irrelevant claim merely to satisfy cardinality. The critic then returns an
+empty `verdicts` array, because its exact-coverage rule remains one verdict per
+reader claim. When `claims` is empty, `warnings` must contain at least one item
+explaining why the reader could not extract a useful source-bound claim.
+
+Reader output has one deterministic validation gateway conceptually equivalent
+to:
+
+```text
+validate_reader_output(task, raw_output) -> ReaderRecord
+```
+
+That gateway owns JSON parsing, structural checks, task/run/paper/source/input
+identity matching, cross-artifact invariants, and exact source-locator
+reconstruction before canonical promotion. It may delegate to smaller internal
+validators, but callers do not validate or promote reader fragments
+independently. It does not decide whether a source semantically supports a
+claim; the critic owns that bounded judgment.
+
+### Core 2.0 lifecycle and corpus terminology
+
+- `invalid` is terminal for one physical agent run. It is not followed by
+  `agent_run.failed` for the same attempt. A permitted retry is a new physical
+  run with a new `agent_run_id` and incremented `attempt_no`.
+- `failed` is a distinct physical-run terminal outcome for dispatch, transport,
+  or other failures that do not produce output reaching validation. Exhausted
+  attempts may separately make a logical job, paper, or investigation fail.
+- A valid review with `report_status: blocked` moves the investigation from
+  `reviewing` to `review_blocked`, not `failed`. Rendering is prohibited while
+  the investigation is `review_blocked`.
+- The corpus is every frozen, deduplicated discovered candidate. Raw provider
+  hits and duplicate observations remain in the discovery ledger but do not
+  inflate the corpus.
+- Every corpus entry has one membership disposition: `included`, `excluded`,
+  or `membership_unresolved`. Only `included` entries receive reader and critic
+  jobs. Every included entry has one analysis outcome: `complete`,
+  `analysis_unresolved`, or `failed`.
+- `membership_unresolved` is for discovery or identity cases that cannot be
+  routed. A conservative screener result of `needs_review` maps to `included`
+  and proceeds to analysis.
+- Reviewer and rendered accounting expose `expected`, `included`, `excluded`,
+  `membership_unresolved`, `complete`, `analysis_unresolved`, and `failed`, and
+  must satisfy both equations:
+
+```text
+expected = CorpusManifest.counts.discovered
+expected = included + excluded + membership_unresolved
+included = complete + analysis_unresolved + failed
+```
+
+`expected` is therefore the number of entries in the frozen corpus, not the
+number of papers sent for analysis.
+
+### Core 2.0 shared scalar and hash rules
+
+Core `2.0` identifiers contain lowercase ASCII letters and digits separated by
+single `-`, `_`, `.`, or `:` characters. They start with a letter and contain
+no whitespace or slash. Repository paths are non-empty, normalized, relative
+POSIX paths: absolute paths, backslashes, and `.` or `..` segments are rejected.
+Artifact timestamps use RFC 3339 UTC with the canonical `Z` suffix.
+
+Canonical JSON sorts object keys, preserves array order, uses compact
+separators, emits non-ASCII characters directly, and has no trailing newline.
+Every object that carries its own named hash (`spec_hash`, `profile_hash`,
+`search_plan_hash`, `corpus_hash`, `identity_hash`, `packet_hash`, or a worker
+task's `input_hash`) hashes that canonical UTF-8 JSON after excluding only its
+own hash field. A record's `input_hash` is instead a reference to the exact
+validated task and must equal that task's self-hash.
+
+`InvestigationSpec.requested_outputs` is a unique, non-empty subset of
+`report` and `papers_csv`; its `uncertainty_policy` is `escalate` in Core 2.0.
+Source formats are `html`, `pdf_text`, or `abstract`; retrieval method is
+`direct` or `fallback`. Paper identity status is `unresolved`,
+`resolved_exact`, `resolved_probable`, or `ambiguous`.
+
+### Self-contained reader and critic tasks
+
+`ReaderTask` and `CriticTask` contain a required `source_text` string. Its
+UTF-8 SHA-256 must equal `source_packet.normalized_sha256`; the task self-hash
+therefore binds the exact text sent to the tool-free worker. The critic receives
+the same frozen text as the reader. Reader validation reconstructs locators
+against `task.source_text`; no separately supplied or mutable source is used.
+
+`CriticTask` otherwise contains the exact paper identity, source packet,
+canonical reader record, objective profile, component rubric, run identity,
+and task self-hash shown in the platform specification. One public gateway,
+`validate_critic_output(task, raw_output)`, owns parsing, structural validation,
+identity and hash matching, exact claim coverage, and evidence-reference checks.
+
+`CriticRecord` contains its role/job/run/investigation/paper/reader/input
+identity, `verdicts`, `objective_assessments`, and `human_review_reasons`.
+Every reader claim has exactly one verdict. Every objective criterion has
+exactly one assessment. Because Core 2.0 supports only `integer_0_5`, each
+assessment has a required integer `score` from 0 through 5 and has no `label`
+field. Assessment evidence IDs are unique and may name only claims marked
+`supported` in that critic record. Human review is required exactly when
+`human_review_reasons` is non-empty; no duplicate boolean is serialized.
+
+### Reviewer task and record
+
+`ReviewerTask` contains exactly: schema/job/run/investigation identity; the
+hash-validated `InvestigationSpec`, `ObjectiveProfile`, `SearchPlan`, and
+`CorpusManifest`; `corpus_accounting`; one `papers` item per included corpus
+entry; optional component-owned `ranking_artifact`; `reviewer_rubric`; and its
+task `input_hash`. A paper item contains `paper_id`, `analysis_status`, and
+nullable canonical reader and critic records. `complete` and
+`analysis_unresolved` require both records; `failed` has no critic and may have
+a reader. All verdicts being supported with correct evidence classifications,
+and no uncertain assessment or critic human-review reason, derives `complete`;
+any objection or uncertainty derives `analysis_unresolved`.
+
+`CorpusAccounting` serializes the seven approved counts and rejects either
+invalid equation. It does not serialize `accounting_valid`, because validity is
+an admission property rather than an agent judgment.
+
+Review evidence references are discriminated objects:
+
+- claim: `{ "kind": "claim", "paper_id": ..., "claim_id": ... }`
+- verdict: `{ "kind": "verdict", "paper_id": ..., "claim_id": ... }`
+- assessment: `{ "kind": "assessment", "paper_id": ...,
+  "criterion_id": ... }`
+- corpus entry: `{ "kind": "corpus_entry", "paper_id": ... }`
+
+A finding contains `finding_id`, `text`, at least one `evidence_refs` item, fixed
+`provenance: reviewer_inferred`, and `uncertain`. A challenge contains
+`challenge_id`, one typed `target`, `text`, zero or more supporting
+`evidence_refs`, and `uncertain`. `human_review_items` is a unique array of
+challenge IDs; it does not repeat challenge text or evidence. `report_status`
+is derived: non-empty human-review items require `blocked`; otherwise any
+challenge or unresolved/failed accounting requires `ready_with_warnings`;
+otherwise it is `ready`. `validate_reviewer_output(task, raw_output)` is the
+single parsing, binding, accounting, and reference-resolution gateway.
+
+### Agent run, validation, outcome, and trace
+
+`AgentRun` is the complete physical-attempt projection. It contains the fields
+defined for `agent_runs` in the Core 2.0 platform spec plus `schema_version` and
+`validation_hash`. Role/job pairs are `paper_reader`/`paper_read`,
+`critic`/`paper_critique`, and `reviewer`/`corpus_review`; paper workers require
+`paper_id`, while corpus roles require null. Attempts are 1 or 2. Status is
+`running`, `output_received`, `invalid`, `completed`, `failed`, or
+`interrupted`. Every optional artifact path and hash is an all-or-null pair.
+Terminal states require completion time and duration. `completed` requires raw,
+validation, and canonical artifacts and no error; `invalid` requires raw and
+validation artifacts plus an error and forbids canonical output; `failed`
+contains no returned artifacts and requires an error; `interrupted` requires an
+error and cannot be canonical.
+
+`validation.json` is a `ValidationRecord` with schema/run identity,
+`validator_version`, `checked_at`, `input_hash`, nullable `parsed_hash`,
+`checks`, `errors`, and `referenced_hashes`. Checks have unique IDs and
+`passed`/`failed` status; failed checks require detail. Referenced-hash names
+are unique. Errors are non-empty exactly when a check failed, and successful
+validation requires a parsed hash. No duplicate `validation_pass` boolean is
+serialized.
+
+`outcome.json` is an `OutcomeRecord` with schema/run identity, terminal status,
+start/completion/duration, input path/hash, raw/validation/canonical path-hash
+pairs, usage, and nullable error. Its terminal artifact/error invariants are
+identical to `AgentRun`.
+
+`TraceEvent` uses the fields in section 9.4 of the Core 2.0 platform spec. Event
+types are `agent_run.started`, `agent_run.output_received`,
+`agent_run.invalid`, `agent_run.completed`, `agent_run.failed`, and
+`agent_run.reconciled`. A start event has sequence 1. Completed/reconciled
+events require an artifact pair and no error; invalid/failed events require an
+error and no artifact. Trace IDs and lifecycle keys remain the replay
+idempotency keys.
+
+## Legacy 1.0 contract
 
 ## General rules
 

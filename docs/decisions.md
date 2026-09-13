@@ -123,3 +123,199 @@ selected extracted representation and its raw-source hash. Abstract-only
 packets must be labeled and gated in the final brief.
 
 * **Date made:** 2026-09-07
+
+## Minimal Core 2.0 ReaderRecord
+
+* **Decision, stated simply:**
+The Core `2.0` `ReaderRecord` has one evidence-bearing collection: `claims`.
+It retains the run, investigation, paper, source, and input identity fields plus
+`problem`, `method`, `claims`, and `warnings`. The proposed parallel collections
+`contributions`, `experimental_evidence`, `limitations`, `assumptions`, and
+`focused_observations` are removed from the universal reader contract.
+
+`claims` may be empty. An empty collection is preferable to requiring a reader
+to invent a claim when the frozen source contains no extractable relevant
+claim. When `claims` is empty, at least one `warnings` item explains why no
+useful source-bound claim was extracted.
+
+One project-owned validation gateway accepts the task and raw reader output;
+the task embeds the hash-bound frozen source text. The gateway owns parsing,
+structural validation, identity and hash
+matching, cross-artifact checks, and exact source-locator reconstruction before
+canonical promotion. The gateway may use small internal validators; callers do
+not independently validate fragments of a reader record. Semantic support
+remains the critic's judgment rather than a deterministic validator decision.
+
+* **Why it was chosen:**
+The removed collections duplicated information that can be expressed as typed
+claims and created unnecessary contract, prompt, persistence, and correction
+surface. One claims collection keeps evidence handling consistent and lets
+downstream consumers rely on one representation.
+
+* **Alternatives considered:**
+- Define a detailed nested schema for all five proposed collections. Rejected
+  because their meanings overlap and downstream consumers would need to
+  reconcile redundant representations.
+- Leave the five collections as arbitrary JSON. Rejected because arbitrary
+  canonical data cannot be validated or consumed reliably.
+- Require at least one claim. Rejected because it rewards fabricated filler
+  when the source does not support a useful claim.
+
+* **Tradeoffs:**
+Component-specific observations are not first-class universal reader fields.
+Components must guide which claims are extracted through reader focus and make
+objective-specific judgments in their own later artifacts. The simpler public
+gateway still requires documented internal checks to remain auditable.
+
+* **Date made:** 2026-09-12
+
+## Minimal exact Core 2.0 worker and run contracts
+
+* **Decision, stated simply:**
+Core `2.0` now has closed `CriticTask`, `CriticRecord`, `ReviewerTask`,
+`ReviewRecord`, `AgentRun`, `ValidationRecord`, `OutcomeRecord`, and
+`TraceEvent` contracts. Reader, critic, and reviewer output each passes through
+one project-owned validation gateway. Reader and critic tasks embed the exact
+normalized `source_text`, bind it to the source-packet hash, and include it in
+the task self-hash so tool-free workers receive all evidence they may inspect.
+
+The critic emits one integer score for every declared `integer_0_5` criterion;
+there is no unused label field. Human-review requirement derives from its
+reason list. Corpus-accounting validity derives from the enforced equations.
+Reviewer human-review items reference challenges by ID rather than duplicating
+their text and evidence. Claim and verdict references include both paper and
+claim ID so they remain unambiguous corpus-wide.
+
+All self-hash fields use canonical JSON excluding only the object's own hash
+field. Identifiers, repository-relative paths, canonical UTC timestamps,
+finite numbers, run statuses, artifact pairs, and terminal outcome rules are
+closed and mechanically validated. Empty frozen corpora remain valid.
+
+* **Why it was chosen:**
+The contracts preserve every identity and evidence relationship needed for
+audit and deterministic persistence without asking agents to repeat facts that
+scripts can derive. Self-contained dispatch inputs also make the no-tools
+worker boundary executable rather than merely aspirational.
+
+* **Alternatives considered:**
+- Keep draft types or arbitrary nested reviewer data. Rejected because invalid
+  canonical artifacts could not be rejected consistently.
+- Serialize `label: null`, `human_review_required`, and `accounting_valid`.
+  Rejected because they duplicate facts already fixed by score type, reasons,
+  and arithmetic.
+- Let workers read normalized source files. Rejected because workers are
+  prohibited from using tools and the dispatched bytes would not fully identify
+  their evidence input.
+
+* **Tradeoffs:**
+Tasks embed source text and canonical prior records, so dispatch payloads are
+larger. Adding a new score type, source format, worker role, or report-gating
+rule requires an explicit schema change rather than passing through an open
+string or arbitrary object.
+
+* **Date made:** 2026-09-13
+
+## Invalid is terminal for a physical agent run
+
+* **Decision, stated simply:**
+`invalid` is a terminal outcome for one physical agent invocation. It means
+bytes were returned but parsing or deterministic validation rejected them. It
+is not followed by a redundant `agent_run.failed` event for the same attempt.
+If the logical job remains retry-eligible, the workflow allocates a new
+`agent_run_id` and increments `attempt_no`.
+
+`failed` remains a distinct terminal outcome for an invocation that fails at
+dispatch, transport, or another stage without producing output that reaches
+validation. Exhausting the retry allowance can fail the logical job or its
+paper without changing an earlier physical attempt from `invalid` to `failed`.
+
+* **Why it was chosen:**
+The terminal status precisely records why the physical attempt ended and keeps
+one final outcome per attempt. Retry identity remains explicit instead of
+reusing or mutating the invalid run.
+
+* **Alternatives considered:**
+Emit `agent_run.invalid` and then `agent_run.failed` for the same physical
+attempt. Rejected because the second status loses precision and duplicates the
+terminal transition.
+
+* **Tradeoffs:**
+Logical-job failure must be derived from its bounded attempts and recorded at
+the paper or investigation level; it cannot be inferred by selecting only
+physical runs whose status is `failed`.
+
+* **Date made:** 2026-09-12
+
+## Explicit blocked-review investigation state
+
+* **Decision, stated simply:**
+A valid `ReviewRecord` with `report_status: blocked` transitions the
+investigation from `reviewing` to `review_blocked`. It does not transition to
+the infrastructure-oriented `failed` state and it cannot proceed to rendering
+until a later, explicitly defined workflow resolves the block.
+
+* **Why it was chosen:**
+A reviewer can successfully complete its job and correctly determine that an
+honest report cannot yet be published. That outcome is materially different
+from a crashed or contract-invalid investigation.
+
+* **Alternatives considered:**
+Map blocked review to `failed`. Rejected because it conflates a valid research
+judgment with infrastructure or contract failure.
+
+* **Tradeoffs:**
+Status consumers must recognize another terminal-or-paused investigation
+state, and resumption behavior must be defined before automatic recovery from
+`review_blocked` is implemented.
+
+* **Date made:** 2026-09-12
+
+## Corpus means every frozen deduplicated discovered candidate
+
+* **Decision, stated simply:**
+The corpus is the complete frozen, deduplicated set of discovered paper
+candidates. Provider hits and duplicate observations remain visible in the
+append-only discovery ledger but do not create additional corpus entries.
+
+Every corpus entry has exactly one membership disposition: `included`,
+`excluded`, or `membership_unresolved`. Only included entries receive reader and
+critic jobs. Included entries then have exactly one analysis outcome:
+`complete`, `analysis_unresolved`, or `failed`.
+
+`membership_unresolved` is reserved for discovery or identity cases that
+cannot be routed. It does not replace the conservative screener's
+`needs_review` result: a `needs_review` candidate is included and analyzed.
+
+Reviewer and rendered accounting use these invariants:
+
+```text
+expected = total frozen corpus entries
+expected = CorpusManifest.counts.discovered
+expected = included + excluded + membership_unresolved
+included = complete + analysis_unresolved + failed
+```
+
+All seven counts remain visible. Thus `expected` covers the whole corpus even
+though analysis outcome accounting applies only to included entries.
+
+* **Why it was chosen:**
+This definition makes disappearance detectable from discovery through report
+generation without manufacturing reader or critic outcomes for excluded
+papers. Distinct membership and analysis unresolved counts also remove the
+ambiguity of one overloaded `unresolved` label.
+
+* **Alternatives considered:**
+- Define corpus as included papers only. Rejected because discovered excluded
+  and unresolved candidates would fall outside top-level corpus accounting.
+- Require reader and critic outcomes for every discovered candidate. Rejected
+  because exclusion is specifically intended to avoid that analysis work.
+- Count raw provider results as corpus entries. Rejected because duplicate
+  records for the same paper would inflate `expected`.
+
+* **Tradeoffs:**
+The system must preserve both raw discovery totals and deduplicated corpus
+totals and must validate two equations rather than one. Membership disposition
+and analysis outcome remain separate concepts in artifacts, storage, and
+reports.
+
+* **Date made:** 2026-09-12

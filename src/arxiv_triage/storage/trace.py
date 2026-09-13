@@ -57,7 +57,16 @@ class TraceFormatError(ValueError):
     """Raised for a malformed lifecycle event or trace line."""
 
 
-def validate_event_shape(event: Mapping[str, Any]) -> None:
+def _event_mapping(event: Mapping[str, Any] | Any) -> Mapping[str, Any]:
+    model_dump = getattr(event, "model_dump", None)
+    if callable(model_dump):
+        event = model_dump(mode="json")
+    if not isinstance(event, Mapping):
+        raise TraceFormatError("trace event must be a mapping or model")
+    return event
+
+
+def validate_event_shape(event: Mapping[str, Any] | Any) -> None:
     """Validate the universal mechanics needed by storage and replay.
 
     Full schema and cross-artifact validation remains in the model/validation
@@ -65,6 +74,7 @@ def validate_event_shape(event: Mapping[str, Any]) -> None:
     event types, and unusable idempotency fields.
     """
 
+    event = _event_mapping(event)
     missing = REQUIRED_FIELDS.difference(event)
     if missing:
         raise TraceFormatError(f"trace event is missing fields: {sorted(missing)}")
@@ -81,9 +91,10 @@ def validate_event_shape(event: Mapping[str, Any]) -> None:
         raise TraceFormatError("trace event attempt_no must be 1 or 2")
 
 
-def event_idempotency_key(event: Mapping[str, Any]) -> tuple[str, str, str, int]:
+def event_idempotency_key(event: Mapping[str, Any] | Any) -> tuple[str, str, str, int]:
     """Return both specification-defined replay identities as one key."""
 
+    event = _event_mapping(event)
     validate_event_shape(event)
     return (
         str(event["event_id"]),
@@ -99,7 +110,8 @@ class TraceAppender:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
 
-    def append(self, event: Mapping[str, Any]) -> None:
+    def append(self, event: Mapping[str, Any] | Any) -> None:
+        event = _event_mapping(event)
         validate_event_shape(event)
         line = canonical_json_bytes(dict(event)) + b"\n"
         self.path.parent.mkdir(parents=True, exist_ok=True)

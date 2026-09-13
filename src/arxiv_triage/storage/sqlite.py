@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS investigations (
     kind TEXT NOT NULL, question TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN (
         'draft','inputs_validated','discovering','corpus_frozen','analyzing',
-        'reviewing','rendering','complete','complete_with_warnings','failed')),
+        'reviewing','review_blocked','rendering','complete',
+        'complete_with_warnings','failed')),
     spec_path TEXT NOT NULL UNIQUE, spec_hash TEXT NOT NULL,
     profile_hash TEXT NOT NULL REFERENCES objective_profiles(profile_hash),
     search_plan_hash TEXT NOT NULL REFERENCES search_plans(search_plan_hash),
@@ -95,8 +96,10 @@ CREATE TABLE IF NOT EXISTS source_documents (
 CREATE TABLE IF NOT EXISTS corpus_membership (
     investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id TEXT NOT NULL REFERENCES papers(paper_id), ordinal INTEGER NOT NULL,
-    membership_status TEXT NOT NULL CHECK (membership_status IN ('included','excluded','unresolved')),
-    terminal_state TEXT CHECK (terminal_state IN ('complete','unresolved','failed')),
+    membership_status TEXT NOT NULL CHECK (membership_status IN (
+        'included','excluded','membership_unresolved')),
+    terminal_state TEXT CHECK (terminal_state IN (
+        'complete','analysis_unresolved','failed')),
     source_document_id TEXT REFERENCES source_documents(source_document_id),
     inclusion_reason TEXT, exclusion_reason TEXT, state_path TEXT,
     PRIMARY KEY (investigation_id, paper_id), UNIQUE (investigation_id, ordinal)
@@ -105,7 +108,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     agent_run_id TEXT PRIMARY KEY,
     investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id TEXT REFERENCES papers(paper_id),
-    role TEXT NOT NULL CHECK (role IN ('orchestrator','paper_reader','critic','reviewer')),
+    role TEXT NOT NULL CHECK (role IN ('paper_reader','critic','reviewer')),
     job_type TEXT NOT NULL, attempt_no INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 2),
     status TEXT NOT NULL CHECK (status IN (
         'running','output_received','invalid','completed','failed','interrupted')),
@@ -114,6 +117,7 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     objective_profile_hash TEXT REFERENCES objective_profiles(profile_hash),
     input_path TEXT NOT NULL, input_hash TEXT NOT NULL,
     raw_output_path TEXT, raw_output_hash TEXT, validation_path TEXT,
+    validation_hash TEXT,
     canonical_path TEXT, canonical_hash TEXT, started_at TEXT NOT NULL,
     completed_at TEXT, duration_ms INTEGER, tokens_in INTEGER, tokens_out INTEGER,
     cost_usd REAL, error TEXT,
@@ -131,12 +135,13 @@ CREATE TABLE IF NOT EXISTS reader_records (
     artifact_hash TEXT NOT NULL, UNIQUE (investigation_id, paper_id)
 );
 CREATE TABLE IF NOT EXISTS claims (
-    claim_id TEXT PRIMARY KEY,
     reader_record_id TEXT NOT NULL REFERENCES reader_records(reader_record_id),
+    claim_id TEXT NOT NULL,
     claim_index INTEGER NOT NULL, claim_kind TEXT NOT NULL, text TEXT NOT NULL,
     document_sha256 TEXT, section_id TEXT, start_char INTEGER, end_char INTEGER,
     source_quote TEXT, evidence_modality TEXT NOT NULL,
     execution_environment TEXT NOT NULL, provenance TEXT NOT NULL,
+    PRIMARY KEY (reader_record_id, claim_id),
     UNIQUE (reader_record_id, claim_index)
 );
 CREATE TABLE IF NOT EXISTS critic_records (
@@ -147,28 +152,37 @@ CREATE TABLE IF NOT EXISTS critic_records (
     reader_record_id TEXT NOT NULL UNIQUE REFERENCES reader_records(reader_record_id),
     input_hash TEXT NOT NULL, artifact_path TEXT NOT NULL UNIQUE,
     artifact_hash TEXT NOT NULL,
-    human_review_required INTEGER NOT NULL CHECK (human_review_required IN (0,1)),
     UNIQUE (investigation_id, paper_id)
 );
 CREATE TABLE IF NOT EXISTS verdicts (
     critic_record_id TEXT NOT NULL REFERENCES critic_records(critic_record_id),
-    claim_id TEXT NOT NULL REFERENCES claims(claim_id),
+    reader_record_id TEXT NOT NULL,
+    claim_id TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN ('supported','unsupported','overclaimed')),
     evidence_classification_correct INTEGER NOT NULL CHECK (evidence_classification_correct IN (0,1)),
-    reason TEXT NOT NULL, PRIMARY KEY (critic_record_id, claim_id)
+    reason TEXT NOT NULL,
+    PRIMARY KEY (critic_record_id, claim_id),
+    FOREIGN KEY (reader_record_id, claim_id)
+        REFERENCES claims(reader_record_id, claim_id)
 );
 CREATE TABLE IF NOT EXISTS objective_assessments (
-    assessment_id TEXT PRIMARY KEY,
     critic_record_id TEXT NOT NULL REFERENCES critic_records(critic_record_id),
-    criterion_id TEXT NOT NULL, score INTEGER CHECK (score BETWEEN 0 AND 5),
-    label TEXT, reason TEXT NOT NULL, assumptions_json TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 5),
+    reason TEXT NOT NULL, assumptions_json TEXT NOT NULL,
     uncertain INTEGER NOT NULL CHECK (uncertain IN (0,1)),
-    UNIQUE (critic_record_id, criterion_id)
+    PRIMARY KEY (critic_record_id, criterion_id)
 );
 CREATE TABLE IF NOT EXISTS assessment_evidence (
-    assessment_id TEXT NOT NULL REFERENCES objective_assessments(assessment_id),
-    claim_id TEXT NOT NULL REFERENCES claims(claim_id),
-    PRIMARY KEY (assessment_id, claim_id)
+    critic_record_id TEXT NOT NULL,
+    criterion_id TEXT NOT NULL,
+    reader_record_id TEXT NOT NULL,
+    claim_id TEXT NOT NULL,
+    PRIMARY KEY (critic_record_id, criterion_id, reader_record_id, claim_id),
+    FOREIGN KEY (critic_record_id, criterion_id)
+        REFERENCES objective_assessments(critic_record_id, criterion_id),
+    FOREIGN KEY (reader_record_id, claim_id)
+        REFERENCES claims(reader_record_id, claim_id)
 );
 CREATE TABLE IF NOT EXISTS review_records (
     review_record_id TEXT PRIMARY KEY,
@@ -179,16 +193,21 @@ CREATE TABLE IF NOT EXISTS review_records (
     artifact_path TEXT NOT NULL UNIQUE, artifact_hash TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS review_findings (
-    finding_id TEXT PRIMARY KEY,
     review_record_id TEXT NOT NULL REFERENCES review_records(review_record_id),
-    finding_type TEXT NOT NULL, text TEXT NOT NULL, provenance TEXT NOT NULL,
-    uncertain INTEGER NOT NULL CHECK (uncertain IN (0,1))
+    finding_id TEXT NOT NULL,
+    text TEXT NOT NULL, provenance TEXT NOT NULL,
+    uncertain INTEGER NOT NULL CHECK (uncertain IN (0,1)),
+    PRIMARY KEY (review_record_id, finding_id)
 );
 CREATE TABLE IF NOT EXISTS review_evidence (
-    finding_id TEXT NOT NULL REFERENCES review_findings(finding_id),
+    review_record_id TEXT NOT NULL,
+    finding_id TEXT NOT NULL,
     evidence_type TEXT NOT NULL CHECK (evidence_type IN ('claim','verdict','assessment','corpus_entry')),
+    paper_id TEXT NOT NULL REFERENCES papers(paper_id),
     evidence_id TEXT NOT NULL,
-    PRIMARY KEY (finding_id, evidence_type, evidence_id)
+    PRIMARY KEY (review_record_id, finding_id, evidence_type, paper_id, evidence_id),
+    FOREIGN KEY (review_record_id, finding_id)
+        REFERENCES review_findings(review_record_id, finding_id)
 );
 CREATE INDEX IF NOT EXISTS idx_corpus_terminal
 ON corpus_membership(investigation_id, terminal_state);
@@ -202,8 +221,15 @@ CREATE INDEX IF NOT EXISTS idx_assessments_criterion ON objective_assessments(cr
 EXPECTED_SENTINELS: dict[str, frozenset[str]] = {
     "papers": frozenset({"paper_id", "schema_version", "identity_path", "identity_hash"}),
     "claims": frozenset({"claim_id", "reader_record_id", "source_quote"}),
-    "agent_runs": frozenset({"agent_run_id", "input_path", "canonical_hash"}),
+    "agent_runs": frozenset(
+        {"agent_run_id", "input_path", "validation_hash", "canonical_hash"}
+    ),
 }
+
+
+_TERMINAL_AGENT_RUN_STATUSES = frozenset(
+    {"invalid", "completed", "failed", "interrupted"}
+)
 
 
 class SQLiteIndex:
@@ -277,8 +303,17 @@ class SQLiteIndex:
                 for row in rows_by_table.get(table, ()):
                     self._insert_exact(connection, table, row)
 
-    def upsert_agent_run(self, row: Mapping[str, Any]) -> None:
+    def upsert_agent_run(self, row: Mapping[str, Any] | Any) -> None:
         """Insert a run or advance only its mutable lifecycle projection."""
+
+        model_dump = getattr(row, "model_dump", None)
+        if callable(model_dump):
+            row = model_dump(mode="json")
+            schema_version = row.pop("schema_version", None)
+            if schema_version != "2.0":
+                raise StorageSchemaError("agent run model schema_version must be '2.0'")
+        if not isinstance(row, Mapping):
+            raise StorageSchemaError("agent run projection must be a mapping or model")
 
         required_identity = {
             "agent_run_id",
@@ -310,12 +345,35 @@ class SQLiteIndex:
                     raise ProjectionConflictError(
                         f"agent run immutable field changed: {field}"
                     )
+            self._validate_columns(connection, "agent_runs", row)
+            requested_status = row.get("status")
+            if (
+                existing["status"] in _TERMINAL_AGENT_RUN_STATUSES
+                and requested_status is not None
+                and requested_status != existing["status"]
+            ):
+                raise ProjectionConflictError(
+                    "agent run terminal status cannot change: "
+                    f"{existing['status']} -> {requested_status}"
+                )
+            if existing["status"] in _TERMINAL_AGENT_RUN_STATUSES:
+                changed = [
+                    field
+                    for field, value in row.items()
+                    if field != "agent_run_id"
+                    and existing[field] != self._sql_value(value)
+                ]
+                if changed:
+                    raise ProjectionConflictError(
+                        "agent run terminal projection cannot change fields: "
+                        f"{sorted(changed)}"
+                    )
+                return
             mutable = [
                 field
                 for field in row
                 if field not in required_identity and field != "agent_run_id"
             ]
-            self._validate_columns(connection, "agent_runs", row)
             if mutable:
                 assignments = ", ".join(f'"{field}" = ?' for field in mutable)
                 values = [self._sql_value(row[field]) for field in mutable]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from arxiv_triage.models import CorpusAccounting, CorpusManifest, sha256_self_hash
 from arxiv_triage.workflow import (
     Accounting,
     AgentRunState,
@@ -37,6 +38,11 @@ def test_legal_state_chains() -> None:
     assert transition_agent_run(
         AgentRunState.VALIDATED, AgentRunState.CANONICALIZED
     ) is AgentRunState.CANONICALIZED
+
+
+def test_invalid_agent_run_is_terminal_for_that_physical_attempt() -> None:
+    with pytest.raises(InvalidTransition):
+        transition_agent_run(AgentRunState.INVALID, AgentRunState.FAILED)
 
 
 @pytest.mark.parametrize(
@@ -191,13 +197,21 @@ def test_canonical_artifact_prevents_any_additional_attempt() -> None:
 def test_reviewer_barrier_requires_all_papers_terminal_and_exact_accounting() -> None:
     states = {
         "paper-1": PaperState.COMPLETE,
-        "paper-2": PaperState.UNRESOLVED,
+        "paper-2": PaperState.ANALYSIS_UNRESOLVED,
         "paper-3": PaperState.FAILED,
     }
     next_state = WorkflowService.prepare_reviewer(
         InvestigationState.ANALYZING,
         included_paper_states=states,
-        accounting=Accounting(expected=3, complete=1, unresolved=1, failed=1),
+        accounting=Accounting(
+            expected=5,
+            included=3,
+            excluded=1,
+            membership_unresolved=1,
+            complete=1,
+            analysis_unresolved=1,
+            failed=1,
+        ),
     )
     assert next_state is InvestigationState.REVIEWING
 
@@ -205,22 +219,137 @@ def test_reviewer_barrier_requires_all_papers_terminal_and_exact_accounting() ->
         WorkflowService.prepare_reviewer(
             InvestigationState.ANALYZING,
             included_paper_states={"paper-1": PaperState.CRITIC_RUNNING},
-            accounting=Accounting(expected=1, complete=0, unresolved=0, failed=1),
+            accounting=Accounting(
+                expected=1,
+                included=1,
+                excluded=0,
+                membership_unresolved=0,
+                complete=0,
+                analysis_unresolved=0,
+                failed=1,
+            ),
         )
     with pytest.raises(GuardViolation, match="accounting mismatch"):
         WorkflowService.prepare_reviewer(
             InvestigationState.ANALYZING,
             included_paper_states=states,
-            accounting=Accounting(expected=3, complete=2, unresolved=0, failed=1),
+            accounting=Accounting(
+                expected=3,
+                included=3,
+                excluded=0,
+                membership_unresolved=0,
+                complete=2,
+                analysis_unresolved=0,
+                failed=1,
+            ),
         )
 
 
-def test_blocked_review_does_not_invent_an_investigation_state() -> None:
+def test_reviewer_accounting_covers_whole_corpus_and_included_outcomes() -> None:
+    with pytest.raises(GuardViolation, match="corpus dispositions"):
+        WorkflowService.prepare_reviewer(
+            InvestigationState.ANALYZING,
+            included_paper_states={"paper-1": PaperState.COMPLETE},
+            accounting=Accounting(
+                expected=3,
+                included=1,
+                excluded=1,
+                membership_unresolved=0,
+                complete=1,
+                analysis_unresolved=0,
+                failed=0,
+            ),
+        )
+
+    with pytest.raises(GuardViolation, match="included terminal accounting"):
+        WorkflowService.prepare_reviewer(
+            InvestigationState.ANALYZING,
+            included_paper_states={"paper-1": PaperState.COMPLETE},
+            accounting=Accounting(
+                expected=3,
+                included=1,
+                excluded=1,
+                membership_unresolved=1,
+                complete=0,
+                analysis_unresolved=0,
+                failed=0,
+            ),
+        )
+
+
+def test_corpus_accounting_contract_uses_both_approved_equations() -> None:
+    valid = {
+        "expected": 5,
+        "included": 3,
+        "excluded": 1,
+        "membership_unresolved": 1,
+        "complete": 1,
+        "analysis_unresolved": 1,
+        "failed": 1,
+    }
+    accounting = CorpusAccounting.model_validate(valid)
+    assert accounting.accounting_valid
+    assert "accounting_valid" not in accounting.model_dump()
+
+    with pytest.raises(ValueError, match="expected must equal"):
+        CorpusAccounting.model_validate(dict(valid, expected=6))
+
+
+def test_frozen_corpus_counts_every_deduplicated_membership() -> None:
+    entries = [
+        {
+            "ordinal": 1,
+            "paper_id": "paper-included",
+            "membership_status": "included",
+            "discovery_refs": ["discovery-1"],
+            "inclusion_reason": "Within scope",
+            "exclusion_reason": None,
+            "terminal_state": None,
+        },
+        {
+            "ordinal": 2,
+            "paper_id": "paper-excluded",
+            "membership_status": "excluded",
+            "discovery_refs": ["discovery-2"],
+            "inclusion_reason": None,
+            "exclusion_reason": "Outside scope",
+            "terminal_state": None,
+        },
+        {
+            "ordinal": 3,
+            "paper_id": "paper-unresolved",
+            "membership_status": "membership_unresolved",
+            "discovery_refs": ["discovery-3"],
+            "inclusion_reason": None,
+            "exclusion_reason": None,
+            "terminal_state": None,
+        },
+    ]
+    payload = {
+        "schema_version": "2.0",
+        "investigation_id": "inv-1",
+        "search_plan_hash": "a" * 64,
+        "frozen_at": "2026-09-12T18:05:00Z",
+        "entries": entries,
+        "counts": {
+            "discovered": 3,
+            "included": 1,
+            "excluded": 1,
+            "membership_unresolved": 1,
+        },
+        "corpus_hash": "0" * 64,
+    }
+    payload["corpus_hash"] = sha256_self_hash(payload, "corpus_hash")
+    manifest = CorpusManifest.model_validate(payload)
+    assert manifest.counts.discovered == len(manifest.entries)
+
+
+def test_blocked_review_enters_explicit_investigation_state() -> None:
     decision = WorkflowService.accept_review(
         InvestigationState.REVIEWING, report_status=ReviewReportStatus.BLOCKED
     )
     assert decision.blocked
-    assert decision.next_state is None
+    assert decision.next_state is InvestigationState.REVIEW_BLOCKED
 
 
 @pytest.mark.parametrize(

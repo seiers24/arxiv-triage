@@ -159,15 +159,30 @@ class ArtifactStore:
                 stream.flush()
                 os.fsync(stream.fileno())
 
-            # Unique run directories and the serialized persistence service
-            # provide the single-writer boundary; replace is the atomic
-            # visibility point required by the artifact contract.
-            os.replace(temporary, target)
+            # Linking the durable sibling into place is an atomic
+            # create-if-absent operation. Unlike os.replace(), it cannot
+            # overwrite bytes created by a concurrent writer between the
+            # existence check above and this visibility point.
+            try:
+                os.link(temporary, target)
+            except FileExistsError:
+                existing = target.read_bytes()
+                if existing != data:
+                    raise ArtifactCollisionError(
+                        "immutable artifact already exists with different bytes: "
+                        f"{relative_path}"
+                    )
+                self._fsync_directory(target.parent)
+                return ArtifactRef(
+                    relative_path,
+                    sha256_bytes(existing),
+                    len(existing),
+                    False,
+                )
             self._fsync_directory(target.parent)
             return ArtifactRef(relative_path, sha256_bytes(data), len(data), True)
-        except BaseException:
+        finally:
             temporary.unlink(missing_ok=True)
-            raise
 
     def write_text(self, relative_path: str, text: str) -> ArtifactRef:
         return self.write_bytes(relative_path, text.encode("utf-8"))

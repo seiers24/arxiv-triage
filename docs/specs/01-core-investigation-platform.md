@@ -1,7 +1,9 @@
 # Core Investigation Platform — Implementation Specification
 
-Status: **proposed for review**  
-Implements: `docs/plans/01-core-investigation-platform.md`  
+Status: **Core contracts approved; agent behavior under review**
+
+Implements: `docs/plans/01-core-investigation-platform.md`
+
 Schema target: `2.0`
 
 ## 1. Purpose
@@ -24,12 +26,12 @@ It does not define workshop-page parsing, proposal conversion, web-search query
 generation, or component-specific scoring rubrics. Those are layered onto these
 contracts by later component specifications.
 
-### Suggested review path
+### Review map
 
-For a short first pass, review sections 3–6 for architecture and flow, section 9
-for agent-run persistence, section 11 for the database, and section 22 for the
-seven decisions that must be accepted or revised. Sections 7–8 contain the
-object-transfer contracts needed for implementation.
+Sections 3–6 define architecture and flow, section 9 defines agent-run
+persistence, section 11 defines the rebuildable index, and section 22 records
+the accepted architecture choices. Sections 7–8 are the exact object-transfer
+contracts.
 
 ## 2. Design rules
 
@@ -42,13 +44,15 @@ object-transfer contracts needed for implementation.
    transition is legal.
 5. The reader never fetches. A reader task cannot be constructed until a frozen
    source packet exists and its hashes have been verified.
-6. Each corpus paper has one logical reader job and one logical critic job.
+6. Each included corpus paper has one logical reader job and one logical critic job.
    Failed physical attempts remain visible and cannot create two canonical
    results.
 7. The reviewer runs once per completed corpus and never edits reader or critic
    artifacts.
-8. Every corpus member finishes as `complete`, `unresolved`, or `failed`.
-   Nothing disappears because processing was unsuccessful.
+8. Every corpus member has one membership disposition. Every included member
+   additionally finishes analysis as `complete`, `analysis_unresolved`, or
+   `failed`. Nothing disappears because it was excluded, could not be routed,
+   or failed during analysis.
 9. Component skills may narrow attention and provide rubrics, but they cannot
    weaken source, provenance, isolation, schema, or failure-visibility rules.
 
@@ -64,13 +68,13 @@ flowchart LR
     W -. authorizes jobs .-> D[Agent dispatcher]
     D -. dispatches .-> R[Paper-reader workers]
     D -. dispatches after reader .-> C[Critic workers]
-    D -. dispatches after all papers .-> V[Corpus reviewer]
+    D -. dispatches after corpus accounting closes .-> V[Corpus reviewer]
     S -->|SourcePacket| R
     R -->|ReaderRecord| P[Run persistence]
     P -->|Canonical ReaderRecord| C
     S -->|Same SourcePacket| C
     C -->|CriticRecord| P
-    P -->|All canonical ReaderRecords and CriticRecords| V
+    P -->|Canonical records for included papers| V
     M -->|Corpus membership and accounting| V
     V -->|ReviewRecord| P
     P --> F[(Canonical JSON artifacts)]
@@ -83,8 +87,9 @@ flowchart LR
 
 Dashed edges are dispatch control; solid edges are persisted data flow. The
 reviewer is not launched alongside paper workers. It receives the frozen corpus
-manifest plus every canonical reader and critic record after all paper chains
-reach a terminal state.
+manifest plus every canonical reader and critic record after all included paper
+chains reach a terminal analysis state and every corpus entry has a membership
+disposition.
 
 Independent paper chains run concurrently. Within one chain, the critic must
 follow its reader because it critiques that reader's record. The corpus-level
@@ -136,12 +141,12 @@ classDiagram
     SourcePacket --> ReaderTask
     ReaderTask --> AgentRun : dispatches
     AgentRun --> ReaderRecord : validates as
-    ReaderRecord "1" *-- "1..*" Claim
+    ReaderRecord "1" *-- "0..*" Claim
     ReaderRecord --> CriticTask
     SourcePacket --> CriticTask
     CriticTask --> AgentRun : dispatches
     AgentRun --> CriticRecord : validates as
-    CriticRecord "1" *-- "1..*" ClaimVerdict
+    CriticRecord "1" *-- "0..*" ClaimVerdict
     CriticRecord "1" *-- "0..*" ObjectiveAssessment
     CorpusManifest --> ReviewerTask
     ReaderRecord --> ReviewerTask
@@ -161,8 +166,9 @@ stateDiagram-v2
     inputs_validated --> discovering
     discovering --> corpus_frozen
     corpus_frozen --> analyzing
-    analyzing --> reviewing: every paper terminal
+    analyzing --> reviewing: all membership dispositions and included outcomes final
     reviewing --> rendering: valid review artifact
+    reviewing --> review_blocked: valid review blocks publication
     rendering --> complete
     rendering --> complete_with_warnings
     draft --> failed
@@ -177,7 +183,10 @@ stateDiagram-v2
 `failed` at investigation level is reserved for an infrastructure or contract
 failure that prevents an honest report. Individual paper failures normally lead
 to `complete_with_warnings`, provided they remain visible and the reviewer does
-not block publication.
+not block publication. `review_blocked` records a valid reviewer decision that
+an honest report is not ready; it is distinct from infrastructure or contract
+failure and cannot transition to rendering without a separately defined
+resolution workflow.
 
 ### 6.2 Per-paper states
 
@@ -196,7 +205,7 @@ stateDiagram-v2
     reader_validated --> critic_pending
     critic_pending --> critic_running
     critic_running --> complete: claims and assessment accepted
-    critic_running --> unresolved: valid objections or uncertainty
+    critic_running --> analysis_unresolved: valid objections or uncertainty
     critic_running --> failed: invalid after allowed retry
 ```
 
@@ -224,7 +233,7 @@ sequenceDiagram
     W->>P: save CorpusManifest
     W-->>O: corpus_frozen
 
-    loop Each corpus paper, bounded concurrency
+    loop Each included corpus paper, bounded concurrency
         O->>W: prepare_reader_task(paper_id)
         W->>A: fetch and freeze source if absent
         A-->>W: SourcePacket
@@ -241,7 +250,7 @@ sequenceDiagram
     end
 
     O->>W: prepare_reviewer_task()
-    W-->>O: ReviewerTask after all papers terminal
+    W-->>O: ReviewerTask after membership and included outcomes close
     O->>V: dispatch ReviewerTask
     V-->>P: raw ReviewRecord response
     P-->>W: validated review and readiness status
@@ -254,6 +263,20 @@ sequenceDiagram
 
 These summaries establish implementation shape. `docs/schema.md` will contain
 the normative JSON Schema/Pydantic definitions when implementation begins.
+
+Core `2.0` identifiers start with a lowercase ASCII letter and continue with
+lowercase letters or digits separated by single `-`, `_`, `.`, or `:`
+characters. Paths are normalized repository-relative POSIX paths without dot
+segments or backslashes. Artifact timestamps are RFC 3339 UTC strings with the
+canonical `Z` suffix.
+
+Every object that stores its own hash uses the same construction: canonical
+compact JSON, lexicographically sorted object keys, arrays in source order,
+direct non-ASCII output, no trailing newline, UTF-8 encoding, with only the
+object's own hash field excluded. This applies to `spec_hash`, `profile_hash`,
+`search_plan_hash`, `corpus_hash`, `identity_hash`, `packet_hash`, and worker
+task `input_hash`. Result-record `input_hash` values reference and must equal
+the dispatched task self-hash.
 
 ### 7.1 `InvestigationSpec`
 
@@ -271,8 +294,9 @@ the normative JSON Schema/Pydantic definitions when implementation begins.
 }
 ```
 
-Core validates structure and hashes. The component owns the contents of
-`scope`, subject to a component schema version.
+Core validates structure and hashes. `requested_outputs` is a unique non-empty
+subset of `report` and `papers_csv`; `uncertainty_policy` is `escalate`. The
+component owns the contents of `scope`, subject to a component schema version.
 
 ### 7.2 `ObjectiveProfile`
 
@@ -342,16 +366,37 @@ explicit completion rule and budget; it does not define search semantics.
     "discovered": 1,
     "included": 1,
     "excluded": 0,
-    "unresolved": 0,
-    "failed": 0
+    "membership_unresolved": 0
   },
   "corpus_hash": "64-lowercase-hex"
 }
 ```
 
-The initial manifest is immutable. Terminal states are recorded in separate
-paper-state artifacts and projected into reports; the manifest itself is not
-rewritten during analysis.
+The corpus is the complete frozen, deduplicated set of discovered candidates.
+Raw provider hits and duplicate observations remain in the append-only
+discovery ledger and are linked through `discovery_refs`; they do not create
+additional manifest entries or inflate `counts.discovered` (and therefore do
+not inflate reviewer `expected`).
+
+Each entry has exactly one `membership_status`: `included`, `excluded`, or
+`membership_unresolved`. `membership_unresolved` is reserved for discovery or
+identity cases that cannot be routed. A conservative screener result of
+`needs_review` maps to `included` and proceeds to analysis. Included entries
+require a non-null `inclusion_reason`; excluded entries require a non-null
+`exclusion_reason`. Membership-unresolved entries keep both reason fields null;
+their details remain in the referenced discovery artifact.
+
+The frozen manifest must satisfy:
+
+```text
+counts.discovered = len(entries)
+counts.discovered = counts.included + counts.excluded + counts.membership_unresolved
+```
+
+The initial manifest is immutable. Analysis outcomes for included entries are
+recorded in separate paper-state artifacts and projected into reports; the
+manifest itself is not rewritten during analysis. Excluded and
+membership-unresolved entries never receive reader or critic jobs.
 
 ### 7.5 `PaperIdentity`
 
@@ -380,7 +425,7 @@ identifiers, not primary keys.
   "schema_version": "2.0",
   "source_document_id": "src-36b7c20d",
   "paper_id": "paper-9a45d231",
-  "format": "arxiv_html",
+  "format": "html",
   "retrieval_method": "direct",
   "source_url": "https://arxiv.org/html/2601.01234v1",
   "retrieved_at": "2026-09-12T18:06:00Z",
@@ -405,6 +450,11 @@ Offsets address the UTF-8-decoded normalized text in Python string code points.
 The validator reconstructs every claim quote from `start_char:end_char` and
 requires exact equality.
 
+Source `format` is `html`, `pdf_text`, or `abstract`. `retrieval_method` is
+`direct` or `fallback`; `source_url` may be null when no stable retrieval URL
+is available. Paper `identity_status` is `unresolved`, `resolved_exact`,
+`resolved_probable`, or `ambiguous`.
+
 ## 8. Worker transfer contracts
 
 ### 8.1 `ReaderTask`
@@ -417,6 +467,7 @@ requires exact equality.
   "investigation_id": "inv-20260912-01a2b3c4",
   "paper_identity": {},
   "source_packet": {},
+  "source_text": "Exact UTF-8-decoded normalized source text",
   "focus": {
     "component": "component-defined-string",
     "skill_hash": null,
@@ -427,8 +478,11 @@ requires exact equality.
 }
 ```
 
-The task embeds or points to the exact frozen packet. The reader receives focus
-questions, not ranking weights or a desired conclusion.
+The task embeds the exact frozen packet and normalized `source_text`; the
+UTF-8 SHA-256 of `source_text` must equal
+`source_packet.normalized_sha256`. The reader therefore needs no file or
+network tool. It receives focus questions, not ranking weights or a desired
+conclusion. `input_hash` is the task self-hash excluding only that field.
 
 ### 8.2 `ReaderRecord`
 
@@ -444,7 +498,6 @@ questions, not ranking weights or a desired conclusion.
   "input_hash": "64-lowercase-hex",
   "problem": "Concise problem statement",
   "method": "Concise method statement",
-  "contributions": [],
   "claims": [
     {
       "claim_id": "claim-0c43e12a",
@@ -463,25 +516,46 @@ questions, not ranking weights or a desired conclusion.
       "status": "unverified"
     }
   ],
-  "experimental_evidence": [],
-  "limitations": [],
-  "assumptions": [],
-  "focused_observations": []
+  "warnings": []
 }
 ```
 
 Core enums:
 
-- `claim_kind`: `problem`, `method`, `result`, `limitation`, `novelty_claim`
+- `claim_kind`: `problem`, `method`, `contribution`, `result`, `limitation`,
+  `assumption`, `novelty_claim`
 - `evidence_modality`: `experiment`, `simulation`, `theory`, `observational`,
   `qualitative`, `none_stated`
 - `execution_environment`: `real_hardware`, `simulated_hardware`,
   `software_runtime`, `dataset_only`, `not_applicable`, `none_stated`
 - `provenance`: `paper_stated`, `analyst_inferred`
 
+This is the complete top-level reader contract. The universal record does not
+contain `contributions`, `experimental_evidence`, `limitations`, `assumptions`,
+or `focused_observations`. Evidence-bearing contributions, methods, results,
+problems, and limitations use the single `claims` collection. Component focus
+questions guide claim extraction but do not create another canonical result
+collection.
+
+`claims` may be empty. An empty collection is valid when the frozen source has
+no extractable relevant claim; the reader must not invent filler to meet a
+minimum cardinality. `warnings` is an array of non-empty strings that keeps the
+reason or any degraded source condition visible, and it must contain at least
+one item when `claims` is empty. The critic's
+one-verdict-per-claim invariant therefore permits an empty `verdicts` array for
+an empty reader record.
+
 An inferred claim has no source locator, uses `none_stated` evidence, and cannot
-be marked supported. Prefer component observations or later assessments over
-inferred paper claims.
+be marked supported. Prefer later objective assessments over inferred paper
+claims.
+
+Reader output is admitted through one deterministic validation gateway that
+accepts the exact task and raw output. That gateway owns parsing,
+top-level and claim structure, identity and hash matching, cross-artifact
+invariants, and exact locator reconstruction before canonical promotion. It may
+be internally decomposed, but callers do not validate or promote reader
+fragments independently. Locator reconstruction uses `task.source_text`. The
+critic, not this gateway, judges semantic support.
 
 ### 8.3 `CriticTask`
 
@@ -493,6 +567,7 @@ inferred paper claims.
   "investigation_id": "inv-20260912-01a2b3c4",
   "paper_identity": {},
   "source_packet": {},
+  "source_text": "Exact UTF-8-decoded normalized source text",
   "reader_record": {},
   "objective_profile": {},
   "critic_rubric": {
@@ -503,8 +578,10 @@ inferred paper claims.
 }
 ```
 
-The critic sees no reader reasoning transcript, preliminary rank, reviewer
-opinion, or desired outcome.
+The critic receives the same source representation: the UTF-8 SHA-256 of its
+embedded `source_text` must equal `source_packet.normalized_sha256`. It sees no
+reader reasoning transcript, preliminary rank, reviewer opinion, or desired
+outcome. `input_hash` is the task self-hash excluding only that field.
 
 ### 8.4 `CriticRecord`
 
@@ -530,31 +607,63 @@ opinion, or desired outcome.
     {
       "criterion_id": "example",
       "score": 3,
-      "label": null,
       "reason": "Assessment bounded to the supplied profile.",
       "evidence_claim_ids": ["claim-0c43e12a"],
       "assumptions": [],
       "uncertain": false
     }
   ],
-  "human_review_required": false,
   "human_review_reasons": []
 }
 ```
 
 Verdict status is `supported`, `unsupported`, or `overclaimed`. Every reader
 claim receives exactly one verdict. Assessments may cite only claims marked
-`supported` in the same critic record.
+`supported` in the same critic record. Every declared objective criterion has
+exactly one assessment. Core `2.0` defines only `integer_0_5`, so `score` is a
+required integer and `label` is not a field. Human review is derived from a
+non-empty `human_review_reasons` array; no duplicate boolean is serialized.
+One `validate_critic_output(task, raw_output)` gateway owns parsing and every
+task/result relationship check.
 
 ### 8.5 `ReviewerTask` and `ReviewRecord`
 
-`ReviewerTask` contains:
+`ReviewerTask` contains exactly:
 
-- investigation, objective-profile, search-plan, and corpus hashes
-- terminal accounting for every corpus entry
-- all canonical reader and critic records
-- deterministic component score/ranking artifact, if applicable
-- component reviewer rubric and skill hash
+```json
+{
+  "schema_version": "2.0",
+  "job_type": "corpus_review",
+  "agent_run_id": "run-reviewer-g7h8i9",
+  "investigation_id": "inv-20260912-01a2b3c4",
+  "investigation_spec": {},
+  "objective_profile": {},
+  "search_plan": {},
+  "corpus_manifest": {},
+  "corpus_accounting": {},
+  "papers": [
+    {
+      "paper_id": "paper-9a45d231",
+      "analysis_status": "complete",
+      "reader_record": {},
+      "critic_record": {}
+    }
+  ],
+  "ranking_artifact": null,
+  "reviewer_rubric": {
+    "component": "component-defined-string",
+    "skill_hash": null
+  },
+  "input_hash": "64-lowercase-hex"
+}
+```
+
+The four embedded universal artifacts retain and verify their own hashes. The
+task contains exactly one `papers` item per included corpus entry. A complete
+or analysis-unresolved item requires both canonical records; a failed item has
+no critic and may retain a reader. `ranking_artifact` is component-owned and is
+validated by that component before dispatch. The task self-hash excludes only
+`input_hash`.
 
 It does not include hidden worker reasoning or mutable conversation history.
 
@@ -570,28 +679,73 @@ It does not include hidden worker reasoning or mutable conversation history.
   "input_hash": "64-lowercase-hex",
   "corpus_accounting": {
     "expected": 1,
+    "included": 1,
+    "excluded": 0,
+    "membership_unresolved": 0,
     "complete": 1,
-    "unresolved": 0,
-    "failed": 0,
-    "accounting_valid": true
+    "analysis_unresolved": 0,
+    "failed": 0
   },
   "findings": [
     {
       "finding_id": "finding-1a2b3c4d",
       "text": "Corpus-level bounded finding",
-      "evidence_refs": ["claim-0c43e12a"],
+      "evidence_refs": [
+        {
+          "kind": "claim",
+          "paper_id": "paper-9a45d231",
+          "claim_id": "claim-0c43e12a"
+        }
+      ],
       "provenance": "reviewer_inferred",
       "uncertain": false
     }
   ],
-  "challenges": [],
+  "challenges": [
+    {
+      "challenge_id": "challenge-1a2b3c4d",
+      "target": {
+        "kind": "verdict",
+        "paper_id": "paper-9a45d231",
+        "claim_id": "claim-0c43e12a"
+      },
+      "text": "Bounded corpus-review objection",
+      "evidence_refs": [],
+      "uncertain": true
+    }
+  ],
   "human_review_items": [],
-  "report_status": "ready"
+  "report_status": "ready_with_warnings"
 }
 ```
 
 `report_status` is `ready`, `ready_with_warnings`, or `blocked`. A reviewer may
 challenge a ranking or conclusion but may not replace its underlying artifacts.
+`expected` equals `CorpusManifest.counts.discovered`, the number of frozen,
+deduplicated corpus entries, including excluded and membership-unresolved
+candidates. The accounting is valid only when all invariants hold:
+
+```text
+expected = CorpusManifest.counts.discovered
+expected = included + excluded + membership_unresolved
+included = complete + analysis_unresolved + failed
+```
+
+Excluded and membership-unresolved entries are represented by their corpus
+membership records, not fabricated reader or critic artifacts.
+
+Accounting validity is enforced by rejecting a record that violates either
+equation; `accounting_valid` is not serialized. Evidence references are typed
+objects: claims and verdicts use `kind`, `paper_id`, and `claim_id`; assessments use
+`kind`, `paper_id`, and `criterion_id`; corpus entries use `kind` plus
+`paper_id`. A finding requires at least one resolvable evidence reference. A
+challenge contains its own ID, typed target, text, optional supporting evidence
+references, and uncertainty flag. `human_review_items` contains unique
+challenge IDs rather than duplicating challenge content. Non-empty human-review
+items derive `blocked`; otherwise any challenge or unresolved/failed count
+derives `ready_with_warnings`; otherwise status is `ready`. One
+`validate_reviewer_output(task, raw_output)` gateway owns parsing, binding,
+accounting, and reference resolution.
 
 ## 9. Agent-run persistence
 
@@ -605,15 +759,19 @@ stateDiagram-v2
     running --> failed: dispatch or transport error
     output_received --> validated: schema and cross-artifact checks pass
     output_received --> invalid: parsing or validation fails
-    invalid --> failed: physical attempt ends
     validated --> canonicalized: canonical artifact atomically written
     canonicalized --> indexed: trace completion appended and DB transaction commits
     indexed --> [*]
+    invalid --> [*]
     failed --> [*]
 ```
 
-An invalid physical run never returns to `running`. If the logical job remains
-eligible, the workflow allocates a new `agent_run_id` with `attempt_no + 1`.
+`invalid` is a terminal physical-run outcome. It records that output arrived but
+failed parsing or deterministic validation and is not followed by
+`agent_run.failed` for the same attempt. If the logical job remains eligible,
+the workflow allocates a new `agent_run_id` with `attempt_no + 1`. Exhausting
+the retry allowance may fail the logical job and its paper or investigation;
+it does not rewrite the final status of an invalid physical attempt.
 
 ### 9.2 Save sequence
 
@@ -646,12 +804,12 @@ sequenceDiagram
             W->>DB: transactionally index artifact and child records
         else Invalid and retry remains
             W->>T: append agent_run.invalid
-            W->>DB: index failed attempt
+            W->>DB: index terminal invalid attempt
             W-->>O: correction retry eligible
         else Invalid and retry exhausted
-            W->>T: append agent_run.failed
-            W->>DB: index terminal failure
-            W-->>O: mark paper or investigation failed
+            W->>T: append agent_run.invalid
+            W->>DB: index terminal invalid attempt
+            W-->>O: mark logical job and paper or investigation failed
         end
     else Dispatch fails
         A-->>W: error without output
@@ -686,6 +844,59 @@ review/canonical.json
 
 No failed or invalid response is promoted. Canonical promotion fails if a
 canonical artifact already exists for a different validated input hash.
+
+#### Exact run-bundle record contracts
+
+`AgentRun` is the complete physical-attempt projection and contains:
+
+```text
+schema_version, agent_run_id, investigation_id, paper_id, role, job_type,
+attempt_no, status, model, agent_definition_hash, component_skill_hash,
+objective_profile_hash, input_path, input_hash, raw_output_path,
+raw_output_hash, validation_path, validation_hash, canonical_path,
+canonical_hash, started_at, completed_at, duration_ms, tokens_in, tokens_out,
+cost_usd, error
+```
+
+Role/job pairs are `paper_reader`/`paper_read`, `critic`/`paper_critique`, and
+`reviewer`/`corpus_review`; paper roles require `paper_id`, while corpus roles
+require null. Attempt is 1 or 2. Status is `running`, `output_received`,
+`invalid`, `completed`, `failed`, or `interrupted`. Each artifact path and hash
+is an all-or-null pair. Terminal states require `completed_at` and
+`duration_ms`. Completed runs require raw, validation, and canonical artifacts
+and no error. Invalid runs require raw and validation artifacts plus an error,
+and forbid canonical output. Failed runs have no returned artifacts and require
+an error. Interrupted runs require an error and cannot be canonical.
+
+`validation.json` contains:
+
+```json
+{
+  "schema_version": "2.0",
+  "agent_run_id": "run-reader-a1b2c3",
+  "validator_version": "exact-validator-version",
+  "checked_at": "2026-09-12T18:10:05Z",
+  "input_hash": "64-lowercase-hex",
+  "parsed_hash": "64-lowercase-hex-or-null",
+  "checks": [
+    {"check_id": "schema", "status": "passed", "detail": null}
+  ],
+  "errors": [],
+  "referenced_hashes": [
+    {"name": "source.packet", "sha256": "64-lowercase-hex"}
+  ]
+}
+```
+
+Checks and referenced-hash names are unique. Check status is `passed` or
+`failed`; a failed check requires detail. `errors` is non-empty exactly when a
+check failed. Successful validation requires `parsed_hash`. Validation pass is
+therefore derived and is not serialized as another boolean.
+
+`outcome.json` contains schema/run identity, terminal `status`, `started_at`,
+`completed_at`, `duration_ms`, input path/hash, raw/validation/canonical
+path-hash pairs, tokens, cost, and error. Its terminal artifact and error rules
+are identical to `AgentRun`. Usage values are nullable and non-negative.
 
 ### 9.4 Trace events
 
@@ -730,6 +941,12 @@ Permitted event types:
 - `agent_run.completed`
 - `agent_run.failed`
 - `agent_run.reconciled`
+
+Trace events use the same role/job/scope rules and repository-relative path,
+hash, timestamp, usage, and error types. `agent_run.started` has sequence 1.
+Completed and reconciled events require an artifact path/hash and no error;
+invalid and failed events require an error and no artifact. Output-received
+events contain neither a canonical artifact nor an error.
 
 The trace appender locks the file for one line, writes UTF-8 JSON plus newline,
 flushes, and calls `fsync`. `event_id` and
@@ -846,7 +1063,7 @@ CREATE TABLE investigations (
     question               TEXT NOT NULL,
     status                 TEXT NOT NULL CHECK (status IN (
         'draft', 'inputs_validated', 'discovering', 'corpus_frozen',
-        'analyzing', 'reviewing', 'rendering', 'complete',
+        'analyzing', 'reviewing', 'review_blocked', 'rendering', 'complete',
         'complete_with_warnings', 'failed'
     )),
     spec_path              TEXT NOT NULL UNIQUE,
@@ -906,10 +1123,10 @@ CREATE TABLE corpus_membership (
     paper_id            TEXT NOT NULL REFERENCES papers(paper_id),
     ordinal             INTEGER NOT NULL,
     membership_status  TEXT NOT NULL CHECK (membership_status IN (
-        'included', 'excluded', 'unresolved'
+        'included', 'excluded', 'membership_unresolved'
     )),
     terminal_state     TEXT CHECK (terminal_state IN (
-        'complete', 'unresolved', 'failed'
+        'complete', 'analysis_unresolved', 'failed'
     )),
     source_document_id TEXT REFERENCES source_documents(source_document_id),
     inclusion_reason   TEXT,
@@ -924,7 +1141,7 @@ CREATE TABLE agent_runs (
     investigation_id      TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id               TEXT REFERENCES papers(paper_id),
     role                   TEXT NOT NULL CHECK (role IN (
-        'orchestrator', 'paper_reader', 'critic', 'reviewer'
+        'paper_reader', 'critic', 'reviewer'
     )),
     job_type               TEXT NOT NULL,
     attempt_no             INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 2),
@@ -940,6 +1157,7 @@ CREATE TABLE agent_runs (
     raw_output_path        TEXT,
     raw_output_hash        TEXT,
     validation_path        TEXT,
+    validation_hash        TEXT,
     canonical_path         TEXT,
     canonical_hash         TEXT,
     started_at             TEXT NOT NULL,
@@ -969,8 +1187,8 @@ CREATE TABLE reader_records (
 );
 
 CREATE TABLE claims (
-    claim_id              TEXT PRIMARY KEY,
     reader_record_id      TEXT NOT NULL REFERENCES reader_records(reader_record_id),
+    claim_id              TEXT NOT NULL,
     claim_index           INTEGER NOT NULL,
     claim_kind            TEXT NOT NULL,
     text                  TEXT NOT NULL,
@@ -982,6 +1200,7 @@ CREATE TABLE claims (
     evidence_modality     TEXT NOT NULL,
     execution_environment TEXT NOT NULL,
     provenance            TEXT NOT NULL,
+    PRIMARY KEY (reader_record_id, claim_id),
     UNIQUE (reader_record_id, claim_index)
 );
 
@@ -994,13 +1213,13 @@ CREATE TABLE critic_records (
     input_hash          TEXT NOT NULL,
     artifact_path       TEXT NOT NULL UNIQUE,
     artifact_hash       TEXT NOT NULL,
-    human_review_required INTEGER NOT NULL CHECK (human_review_required IN (0, 1)),
     UNIQUE (investigation_id, paper_id)
 );
 
 CREATE TABLE verdicts (
     critic_record_id    TEXT NOT NULL REFERENCES critic_records(critic_record_id),
-    claim_id            TEXT NOT NULL REFERENCES claims(claim_id),
+    reader_record_id    TEXT NOT NULL,
+    claim_id            TEXT NOT NULL,
     status              TEXT NOT NULL CHECK (status IN (
         'supported', 'unsupported', 'overclaimed'
     )),
@@ -1008,25 +1227,31 @@ CREATE TABLE verdicts (
         evidence_classification_correct IN (0, 1)
     ),
     reason              TEXT NOT NULL,
-    PRIMARY KEY (critic_record_id, claim_id)
+    PRIMARY KEY (critic_record_id, claim_id),
+    FOREIGN KEY (reader_record_id, claim_id)
+        REFERENCES claims(reader_record_id, claim_id)
 );
 
 CREATE TABLE objective_assessments (
-    assessment_id       TEXT PRIMARY KEY,
     critic_record_id    TEXT NOT NULL REFERENCES critic_records(critic_record_id),
     criterion_id        TEXT NOT NULL,
-    score               INTEGER CHECK (score BETWEEN 0 AND 5),
-    label               TEXT,
+    score               INTEGER NOT NULL CHECK (score BETWEEN 0 AND 5),
     reason              TEXT NOT NULL,
     assumptions_json    TEXT NOT NULL,
     uncertain           INTEGER NOT NULL CHECK (uncertain IN (0, 1)),
-    UNIQUE (critic_record_id, criterion_id)
+    PRIMARY KEY (critic_record_id, criterion_id)
 );
 
 CREATE TABLE assessment_evidence (
-    assessment_id       TEXT NOT NULL REFERENCES objective_assessments(assessment_id),
-    claim_id            TEXT NOT NULL REFERENCES claims(claim_id),
-    PRIMARY KEY (assessment_id, claim_id)
+    critic_record_id    TEXT NOT NULL,
+    criterion_id        TEXT NOT NULL,
+    reader_record_id    TEXT NOT NULL,
+    claim_id            TEXT NOT NULL,
+    PRIMARY KEY (critic_record_id, criterion_id, reader_record_id, claim_id),
+    FOREIGN KEY (critic_record_id, criterion_id)
+        REFERENCES objective_assessments(critic_record_id, criterion_id),
+    FOREIGN KEY (reader_record_id, claim_id)
+        REFERENCES claims(reader_record_id, claim_id)
 );
 
 CREATE TABLE review_records (
@@ -1042,21 +1267,25 @@ CREATE TABLE review_records (
 );
 
 CREATE TABLE review_findings (
-    finding_id          TEXT PRIMARY KEY,
     review_record_id    TEXT NOT NULL REFERENCES review_records(review_record_id),
-    finding_type        TEXT NOT NULL,
+    finding_id          TEXT NOT NULL,
     text                TEXT NOT NULL,
     provenance          TEXT NOT NULL,
-    uncertain           INTEGER NOT NULL CHECK (uncertain IN (0, 1))
+    uncertain           INTEGER NOT NULL CHECK (uncertain IN (0, 1)),
+    PRIMARY KEY (review_record_id, finding_id)
 );
 
 CREATE TABLE review_evidence (
-    finding_id          TEXT NOT NULL REFERENCES review_findings(finding_id),
+    review_record_id    TEXT NOT NULL,
+    finding_id          TEXT NOT NULL,
     evidence_type       TEXT NOT NULL CHECK (evidence_type IN (
         'claim', 'verdict', 'assessment', 'corpus_entry'
     )),
+    paper_id            TEXT NOT NULL REFERENCES papers(paper_id),
     evidence_id         TEXT NOT NULL,
-    PRIMARY KEY (finding_id, evidence_type, evidence_id)
+    PRIMARY KEY (review_record_id, finding_id, evidence_type, paper_id, evidence_id),
+    FOREIGN KEY (review_record_id, finding_id)
+        REFERENCES review_findings(review_record_id, finding_id)
 );
 
 CREATE INDEX idx_corpus_terminal
@@ -1074,6 +1303,13 @@ validation before a single ingestion transaction:
 
 - `agent_runs.paper_id` must be non-null for reader and critic jobs and null for
   corpus review.
+- Excluded and membership-unresolved corpus entries must keep
+  `corpus_membership.terminal_state` null and never receive reader or critic
+  jobs. An included entry may keep it null while analysis is in progress but
+  must have a terminal analysis state before the reviewer barrier opens.
+- Corpus accounting must satisfy `expected = included + excluded +
+  membership_unresolved` and `included = complete + analysis_unresolved +
+  failed`.
 - Reader source, paper, investigation, and input hashes must match its task.
 - Critic paper and investigation must match its reader record.
 - Every reader claim must have exactly one critic verdict.
@@ -1095,8 +1331,8 @@ status updates.
 | `accept_reader` | reader running | output and cross-input checks pass | `reader_validated` |
 | `prepare_critic` | `reader_validated` | source and canonical reader hashes verify; no canonical critic | `CriticTask` |
 | `accept_critic` | critic running | complete verdict coverage and valid evidence links | terminal paper state |
-| `prepare_reviewer` | every paper terminal | accounting totals equal corpus | `ReviewerTask` |
-| `accept_review` | reviewing | review schema and references validate | `rendering` or blocked |
+| `prepare_reviewer` | every corpus membership final and every included paper terminal | both accounting equations equal the frozen corpus | `ReviewerTask` |
+| `accept_review` | reviewing | review schema and references validate | `rendering` or `review_blocked` |
 | `complete` | rendering | outputs exist; reviewer did not block | complete status |
 
 The orchestrator cannot bypass these guards by directly editing state files or
@@ -1110,8 +1346,9 @@ The proposed core policy is:
 - At most two physical attempts for each logical job.
 - Retry only transport failures, missing output, malformed JSON, or schema
   failure that a correction prompt can address.
-- A valid `unsupported`, `overclaimed`, or `uncertain` critic result is not a
-  retry condition. It makes the paper `unresolved` or creates human review.
+- A valid `unsupported`, `overclaimed`, evidence-classification mismatch, or
+  `uncertain` critic result is not a retry condition. It makes the paper
+  `analysis_unresolved` or creates human review.
 - The reviewer has one attempt plus one schema-correction retry.
 - Retrieval retries are provider-specific but always bounded and recorded.
 - No worker receives another worker's hidden reasoning or prior failed response,
@@ -1270,7 +1507,8 @@ flowchart LR
 - Critic returns exactly one verdict for every claim.
 - Supported verdict is rejected when the exact source locator fails.
 - Objective assessment is rejected if it cites an unsupported claim.
-- Reviewer cannot run while any corpus paper lacks a terminal state.
+- Reviewer cannot run until every corpus membership disposition is final and
+  every included paper has a terminal analysis state.
 - Reviewer evidence cannot escape its investigation.
 
 ### 19.3 Persistence and recovery tests
@@ -1290,7 +1528,9 @@ Use three frozen synthetic source packets:
 2. an overclaimed simulation-as-hardware result
 3. a source-fetch or reader failure
 
-Expected final accounting is one `complete`, one `unresolved`, and one `failed`.
+Expected final accounting is three included papers: one `complete`, one
+`analysis_unresolved`, and one `failed`; `expected` and `included` both equal
+three, while `excluded` and `membership_unresolved` equal zero.
 The reviewer receives all three and the renderer shows all three.
 
 ## 20. Implementation milestones
@@ -1311,10 +1551,12 @@ The reviewer receives all three and the renderer shows all three.
 - Source-before-reader and reader-before-critic ordering is mechanically enforced.
 - Exactly one canonical reader and critic artifact exists per paper.
 - Every physical model attempt is preserved and traceable.
-- One corpus reviewer runs only after all papers are terminal.
+- One corpus reviewer runs only after every membership disposition is final and
+  every included paper has a terminal analysis state.
 - Every claim and assessment resolves to compatible hashed source artifacts.
 - SQLite can be deleted and rebuilt without losing evidence or run history.
-- Complete, unresolved, and failed papers all appear in rendered output.
+- Complete, analysis-unresolved, and failed included papers all appear in
+  rendered output alongside excluded and membership-unresolved corpus entries.
 - Base agent definitions contain no workshop- or proposal-specific knowledge.
 - Core tests pass without network access.
 
@@ -1326,7 +1568,7 @@ Please explicitly accept or revise these before implementation:
    orchestrator review its own synthesis.
 2. **Trace model:** use lifecycle events instead of one final JSONL row per run.
 3. **Retry model:** retry only transport/schema failures; valid critic objections
-   become unresolved without semantic rereading.
+   become analysis-unresolved without semantic rereading.
 4. **Identity model:** use internal `paper_id`; treat arXiv as one identifier.
 5. **Storage model:** canonical JSON and trace are authoritative; SQLite is fully
    rebuildable.

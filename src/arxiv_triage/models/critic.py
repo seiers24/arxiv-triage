@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Literal, Self
 
 from pydantic import StrictBool, model_validator
 
-from .base import ContractModel, Score, Sha256, Text
+from .base import (
+    ContractModel,
+    Identifier,
+    Score,
+    Sha256,
+    Text,
+    require_self_hash,
+    sha256_bytes,
+)
 from .investigation import ObjectiveProfile
 from .paper import PaperIdentity
-from .reader import ReaderRecordDraft
+from .reader import ReaderRecord
 from .source import SourcePacket
 
 
@@ -19,37 +28,49 @@ class CriticRubric(ContractModel):
 
 
 class ClaimVerdict(ContractModel):
-    claim_id: Text
+    claim_id: Identifier
     status: Literal["supported", "unsupported", "overclaimed"]
     evidence_classification_correct: StrictBool
     reason: Text
 
 
 class ObjectiveAssessment(ContractModel):
-    criterion_id: Text
+    """Assessment of one declared integer criterion."""
+
+    criterion_id: Identifier
     score: Score
-    label: None
     reason: Text
-    evidence_claim_ids: list[Text]
+    evidence_claim_ids: list[Identifier]
     assumptions: list[Text]
     uncertain: StrictBool
 
+    @model_validator(mode="after")
+    def references_are_unique(self) -> Self:
+        if len(self.evidence_claim_ids) != len(set(self.evidence_claim_ids)):
+            raise ValueError("assessment evidence_claim_ids must be unique")
+        if len(self.assumptions) != len(set(self.assumptions)):
+            raise ValueError("assessment assumptions must be unique")
+        return self
 
-class CriticRecordDraft(ContractModel):
-    """Non-canonical result pending assessment-label contract completion."""
 
+class CriticRecord(ContractModel):
     schema_version: Literal["2.0"]
     role: Literal["critic"]
     job_type: Literal["paper_critique"]
-    agent_run_id: Text
-    investigation_id: Text
-    paper_id: Text
-    reader_run_id: Text
+    agent_run_id: Identifier
+    investigation_id: Identifier
+    paper_id: Identifier
+    reader_run_id: Identifier
     input_hash: Sha256
     verdicts: list[ClaimVerdict]
     objective_assessments: list[ObjectiveAssessment]
-    human_review_required: StrictBool
     human_review_reasons: list[Text]
+
+    @property
+    def human_review_required(self) -> bool:
+        """Derive review gating instead of trusting a duplicated boolean."""
+
+        return bool(self.human_review_reasons)
 
     @model_validator(mode="after")
     def referenced_ids_are_unique(self) -> Self:
@@ -59,19 +80,20 @@ class CriticRecordDraft(ContractModel):
         criterion_ids = [item.criterion_id for item in self.objective_assessments]
         if len(criterion_ids) != len(set(criterion_ids)):
             raise ValueError("objective assessment criterion_id values must be unique")
+        if len(self.human_review_reasons) != len(set(self.human_review_reasons)):
+            raise ValueError("human_review_reasons must be unique")
         return self
 
 
-class CriticTaskDraft(ContractModel):
-    """Non-canonical task because its embedded reader record is incomplete."""
-
+class CriticTask(ContractModel):
     schema_version: Literal["2.0"]
     job_type: Literal["paper_critique"]
-    agent_run_id: Text
-    investigation_id: Text
+    agent_run_id: Identifier
+    investigation_id: Identifier
     paper_identity: PaperIdentity
     source_packet: SourcePacket
-    reader_record: ReaderRecordDraft
+    source_text: Text
+    reader_record: ReaderRecord
     objective_profile: ObjectiveProfile
     critic_rubric: CriticRubric
     input_hash: Sha256
@@ -83,11 +105,25 @@ class CriticTaskDraft(ContractModel):
             raise ValueError("source packet paper_id does not match paper identity")
         if self.reader_record.paper_id != paper_id:
             raise ValueError("reader record paper_id does not match paper identity")
+        if self.reader_record.investigation_id != self.investigation_id:
+            raise ValueError("reader record investigation_id does not match critic task")
         if self.reader_record.source_document_id != self.source_packet.source_document_id:
             raise ValueError("reader record does not reference the supplied source packet")
+        if sha256_bytes(self.source_text.encode("utf-8")) != self.source_packet.normalized_sha256:
+            raise ValueError("source_text hash does not match source packet")
+        self.source_packet.validate_normalized_text(self.source_text)
+        for claim in self.reader_record.claims:
+            if claim.source_locator is not None:
+                self.source_packet.validate_locator(
+                    **claim.source_locator.model_dump(),
+                    normalized_text=self.source_text,
+                )
+        if self.critic_rubric.component != self.objective_profile.component:
+            raise ValueError("critic rubric component does not match objective profile")
+        require_self_hash(self, "input_hash")
         return self
 
-    def validate_record(self, value: CriticRecordDraft) -> CriticRecordDraft:
+    def validate_record(self, value: CriticRecord) -> CriticRecord:
         if value.agent_run_id != self.agent_run_id:
             raise ValueError("critic record agent_run_id does not match task")
         if value.investigation_id != self.investigation_id:
@@ -115,9 +151,8 @@ class CriticTaskDraft(ContractModel):
             assessment.criterion_id: assessment
             for assessment in value.objective_assessments
         }
-        if not assessments.keys() <= criteria.keys():
-            raise ValueError("objective assessment references an undeclared criterion")
-
+        if assessments.keys() != criteria.keys():
+            raise ValueError("critic must assess exactly every declared objective criterion")
         supported = {
             claim_id for claim_id, verdict in verdicts.items() if verdict.status == "supported"
         }
@@ -125,3 +160,27 @@ class CriticTaskDraft(ContractModel):
             if not set(assessment.evidence_claim_ids) <= supported:
                 raise ValueError("objective assessments may cite only supported claims")
         return value
+
+
+def validate_critic_output(
+    task: CriticTask,
+    value: CriticRecord | Mapping[str, object] | str | bytes | bytearray,
+) -> CriticRecord:
+    """Parse, validate, and bind critic output through one public gateway."""
+
+    record = (
+        CriticRecord.model_validate_json(value)
+        if isinstance(value, (str, bytes, bytearray))
+        else CriticRecord.model_validate(value)
+    )
+    return task.validate_record(record)
+
+
+__all__ = [
+    "ClaimVerdict",
+    "CriticRecord",
+    "CriticRubric",
+    "CriticTask",
+    "ObjectiveAssessment",
+    "validate_critic_output",
+]

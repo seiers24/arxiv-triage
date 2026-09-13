@@ -13,6 +13,7 @@ class InvestigationState(StrEnum):
     CORPUS_FROZEN = "corpus_frozen"
     ANALYZING = "analyzing"
     REVIEWING = "reviewing"
+    REVIEW_BLOCKED = "review_blocked"
     RENDERING = "rendering"
     COMPLETE = "complete"
     COMPLETE_WITH_WARNINGS = "complete_with_warnings"
@@ -30,7 +31,7 @@ class PaperState(StrEnum):
     CRITIC_PENDING = "critic_pending"
     CRITIC_RUNNING = "critic_running"
     COMPLETE = "complete"
-    UNRESOLVED = "unresolved"
+    ANALYSIS_UNRESOLVED = "analysis_unresolved"
     FAILED = "failed"
 
 
@@ -49,13 +50,16 @@ INVESTIGATION_TERMINAL_STATES = frozenset(
     {
         InvestigationState.COMPLETE,
         InvestigationState.COMPLETE_WITH_WARNINGS,
+        InvestigationState.REVIEW_BLOCKED,
         InvestigationState.FAILED,
     }
 )
 PAPER_TERMINAL_STATES = frozenset(
-    {PaperState.COMPLETE, PaperState.UNRESOLVED, PaperState.FAILED}
+    {PaperState.COMPLETE, PaperState.ANALYSIS_UNRESOLVED, PaperState.FAILED}
 )
-AGENT_RUN_TERMINAL_STATES = frozenset({AgentRunState.INDEXED, AgentRunState.FAILED})
+AGENT_RUN_TERMINAL_STATES = frozenset(
+    {AgentRunState.INVALID, AgentRunState.INDEXED, AgentRunState.FAILED}
+)
 
 
 _INVESTIGATION_TRANSITIONS = {
@@ -80,6 +84,7 @@ _INVESTIGATION_TRANSITIONS = {
         InvestigationState.FAILED,
     },
     InvestigationState.REVIEWING: {
+        InvestigationState.REVIEW_BLOCKED,
         InvestigationState.RENDERING,
         InvestigationState.FAILED,
     },
@@ -101,7 +106,7 @@ _PAPER_TRANSITIONS = {
     PaperState.CRITIC_PENDING: {PaperState.CRITIC_RUNNING},
     PaperState.CRITIC_RUNNING: {
         PaperState.COMPLETE,
-        PaperState.UNRESOLVED,
+        PaperState.ANALYSIS_UNRESOLVED,
         PaperState.FAILED,
     },
 }
@@ -113,7 +118,6 @@ _AGENT_RUN_TRANSITIONS = {
         AgentRunState.VALIDATED,
         AgentRunState.INVALID,
     },
-    AgentRunState.INVALID: {AgentRunState.FAILED},
     AgentRunState.VALIDATED: {AgentRunState.CANONICALIZED},
     AgentRunState.CANONICALIZED: {AgentRunState.INDEXED},
 }

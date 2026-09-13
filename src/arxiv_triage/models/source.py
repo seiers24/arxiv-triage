@@ -6,11 +6,21 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from .base import ContractModel, NonNegativeInt, Rfc3339, Sha256, Text, sha256_bytes
+from .base import (
+    ContractModel,
+    Identifier,
+    NonNegativeInt,
+    RepositoryRelativePath,
+    Sha256,
+    Text,
+    UtcTimestamp,
+    require_self_hash,
+    sha256_bytes,
+)
 
 
 class SourceSection(ContractModel):
-    section_id: Text
+    section_id: Identifier
     heading: Text
     start_char: NonNegativeInt
     end_char: NonNegativeInt
@@ -24,15 +34,15 @@ class SourceSection(ContractModel):
 
 class SourcePacket(ContractModel):
     schema_version: Literal["2.0"]
-    source_document_id: Text
-    paper_id: Text
-    format: Text
-    retrieval_method: Text
-    source_url: Text
-    retrieved_at: Rfc3339
-    original_path: Text
+    source_document_id: Identifier
+    paper_id: Identifier
+    format: Literal["html", "pdf_text", "abstract"]
+    retrieval_method: Literal["direct", "fallback"]
+    source_url: Text | None
+    retrieved_at: UtcTimestamp
+    original_path: RepositoryRelativePath
     original_sha256: Sha256
-    normalized_path: Text
+    normalized_path: RepositoryRelativePath
     normalized_sha256: Sha256
     sections: list[SourceSection]
     warnings: list[Text]
@@ -46,6 +56,7 @@ class SourcePacket(ContractModel):
         for previous, current in zip(self.sections, self.sections[1:], strict=False):
             if current.start_char < previous.end_char:
                 raise ValueError("source sections must be ordered and non-overlapping")
+        require_self_hash(self, "packet_hash")
         return self
 
     def section(self, section_id: str) -> SourceSection:

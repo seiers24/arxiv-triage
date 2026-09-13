@@ -19,6 +19,27 @@ from .sqlite import SQLiteIndex
 from .trace import TraceAppender, iter_trace
 
 
+_TERMINAL_EVENT_TYPES = frozenset(
+    {
+        "agent_run.invalid",
+        "agent_run.completed",
+        "agent_run.failed",
+        "agent_run.reconciled",
+    }
+)
+
+_STATUS_EVENT_TYPES = {
+    "running": frozenset({"agent_run.started"}),
+    "output_received": frozenset({"agent_run.output_received"}),
+    "invalid": frozenset({"agent_run.invalid"}),
+    "completed": frozenset({"agent_run.completed", "agent_run.reconciled"}),
+    "failed": frozenset({"agent_run.failed"}),
+    # Recovery records interruption in SQLite after a durable start event. The
+    # trace contract intentionally has no separate interrupted event.
+    "interrupted": frozenset({"agent_run.started"}),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class ReconciliationItem:
     agent_run_id: str
@@ -88,11 +109,16 @@ class Reconciler:
         for run_id in sorted(set(events_by_run) | set(run_directories)):
             events = events_by_run.get(run_id, [])
             event_types = {event["event_type"] for event in events}
+            terminal_event_types = event_types.intersection(_TERMINAL_EVENT_TYPES)
             run_directory = run_directories.get(run_id)
             outcome_path = run_directory / "outcome.json" if run_directory else None
             outcome = self._read_object(outcome_path) if outcome_path and outcome_path.exists() else None
 
-            if "agent_run.started" in event_types and outcome is None:
+            if (
+                "agent_run.started" in event_types
+                and not terminal_event_types
+                and outcome is None
+            ):
                 interrupted.append(
                     ReconciliationItem(
                         run_id,
@@ -102,11 +128,21 @@ class Reconciler:
                 )
                 continue
 
+
+            if terminal_event_types and outcome is None:
+                integrity_errors.append(
+                    ReconciliationItem(
+                        run_id,
+                        "integrity_error",
+                        "terminal trace event exists but the immutable run bundle has no outcome.json",
+                    )
+                )
+
             canonical_path, canonical_hash = self._verified_canonical(outcome)
             completion_present = bool(
                 {"agent_run.completed", "agent_run.reconciled"}.intersection(event_types)
             )
-            if canonical_path and not completion_present:
+            if canonical_path and not terminal_event_types:
                 append_reconciled.append(
                     ReconciliationItem(
                         run_id,
@@ -116,12 +152,22 @@ class Reconciler:
                         canonical_hash,
                     )
                 )
-            if completion_present and run_id not in database_rows:
+            elif canonical_path and not completion_present:
+                integrity_errors.append(
+                    ReconciliationItem(
+                        run_id,
+                        "integrity_error",
+                        "canonical outcome conflicts with a non-completion terminal trace event",
+                        canonical_path,
+                        canonical_hash,
+                    )
+                )
+            if terminal_event_types and outcome is not None and run_id not in database_rows:
                 reindex_required.append(
                     ReconciliationItem(
                         run_id,
                         "reindex",
-                        "trace completion exists but SQLite has no run projection",
+                        "terminal trace event exists but SQLite has no run projection",
                         canonical_path,
                         canonical_hash,
                     )
@@ -131,15 +177,25 @@ class Reconciler:
             if row["investigation_id"] != investigation_id:
                 continue
             events = events_by_run.get(run_id, [])
+            event_types = {event["event_type"] for event in events}
             canonical_path = row.get("canonical_path")
             missing_trace = not events
             missing_artifact = bool(canonical_path) and not self.store.resolve(canonical_path).is_file()
-            if missing_trace or missing_artifact:
+            expected_events = _STATUS_EVENT_TYPES.get(row["status"], frozenset())
+            missing_status_event = bool(events) and not event_types.intersection(expected_events)
+            invalid_has_canonical = row["status"] == "invalid" and bool(canonical_path)
+            if missing_trace or missing_status_event or missing_artifact or invalid_has_canonical:
                 reasons = []
                 if missing_trace:
                     reasons.append("no supporting trace event")
+                if missing_status_event:
+                    reasons.append(
+                        f"no trace event supports projected status {row['status']!r}"
+                    )
                 if missing_artifact:
                     reasons.append("canonical artifact is missing")
+                if invalid_has_canonical:
+                    reasons.append("invalid attempt references a canonical artifact")
                 integrity_errors.append(
                     ReconciliationItem(
                         run_id,

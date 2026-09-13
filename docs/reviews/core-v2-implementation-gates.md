@@ -1,6 +1,7 @@
 # Core 2.0 implementation review gates
 
-**Status:** pending human review  
+**Status:** exact Core 2.0 contracts approved; agent behavior under review
+
 **Created:** 2026-09-12
 
 This document tracks decisions and files that must be reviewed before the
@@ -24,36 +25,25 @@ research behavior:
 The legacy `1.0` scripts and database remain unchanged during this additive
 implementation.
 
-## Blocking contract definitions
+## Approved exact contract definitions
 
-The architecture specification intentionally describes some payloads at a
-summary level. Code and agent prompts need exact contracts for:
+The formerly blocking definitions are now exact in `docs/schema.md`, the Core
+platform specification, and `src/arxiv_triage/models/`:
 
-1. `ReaderRecord.contributions[]`
-2. `ReaderRecord.experimental_evidence[]`
-3. `ReaderRecord.limitations[]`
-4. `ReaderRecord.assumptions[]`
-5. `ReaderRecord.focused_observations[]`
-6. the complete `ReviewerTask`
-7. `ReviewRecord.challenges[]`
-8. `ReviewRecord.human_review_items[]`
-9. the complete `AgentRun` artifact
-10. self-hash construction for every hash-addressed object
-11. identifier, repository-relative path, and timestamp constraints
-12. whether `agent_run.invalid` is terminal for a physical attempt or must
-    always be followed by a separate `agent_run.failed` event
-13. the investigation state entered when a valid reviewer returns
-    `report_status: blocked`
-14. the complete `validation.json` contract
-15. the complete `outcome.json` contract
-16. whether corpus `membership_status` includes `unresolved`, as the SQLite
-    schema permits but the manifest summary does not define
-17. whether reviewer terminal accounting covers all discovered entries or
-    included papers only
+1. the complete `ReviewerTask`
+2. `ReviewRecord.challenges[]`
+3. `ReviewRecord.human_review_items[]`
+4. the complete `AgentRun` artifact
+5. self-hash construction for every hash-addressed object
+6. identifier, repository-relative path, and timestamp constraints
+7. the complete `validation.json` contract
+8. the complete `outcome.json` contract
 
-Until these are approved, implementations must not invent shapes or silently
-accept arbitrary data for them. Partial models may cover only the explicitly
-specified contract surface.
+The approved forms minimize duplicate state: assessment labels are absent for
+the sole integer score type, critic review gating derives from reasons,
+accounting validity derives from enforced equations, and reviewer human-review
+items reference challenges. Reader and critic tasks embed and hash-bind the
+exact normalized source text required by tool-free workers.
 
 ## SQLite migration decision
 
@@ -61,71 +51,68 @@ The proposed `2.0` schema reuses table names from the incompatible `1.0`
 database. The implementation will not drop, rewrite, or auto-migrate existing
 tables.
 
-Pending choice:
+Approved rollout: use `data/triage-v2.db`; any in-place `1.0` migration is a
+separate future decision. Canonical JSON and the trace remain authoritative,
+and the fresh index is reversible.
 
-- use `data/triage-v2.db` during rollout, then separately design migration; or
-- approve a reviewed in-place `1.0` to `2.0` migration before the `2.0` CLI
-  adopts `data/triage.db`.
+## Approved minimal ReaderRecord decision
 
-Recommended rollout: use a versioned database first because canonical JSON and
-the trace remain authoritative, and a fresh index is reversible.
+The Core `2.0` reader record has one evidence-bearing collection, `claims`, and
+retains only its identity metadata, `problem`, `method`, `claims`, and
+`warnings`. `contributions`, `experimental_evidence`, `limitations`,
+`assumptions`, and `focused_observations` are removed from the universal
+contract. `claims` may be empty; the reader must not invent filler when no
+useful source-bound claim can be extracted, and at least one warning must then
+explain the empty collection.
 
-## Invalid-run lifecycle decision
+Reader output passes through one deterministic validation gateway before
+canonical promotion. The gateway owns parsing, structure, identity, hash,
+cross-artifact, and exact-locator checks; semantic support remains the critic's
+judgment.
 
-Sections 9.1 and 9.2 currently disagree. The state diagram transitions an
-invalid physical run to `failed`, while the save sequence records a retryable
-attempt with `agent_run.invalid` and indexes that attempt as failed.
+## Approved invalid-run lifecycle decision
 
-Pending choice:
+`invalid` is terminal for the physical attempt. It is not followed by a separate
+`agent_run.failed` event for the same invocation. A permitted retry receives a
+new run ID and incremented attempt number. Exhausted invalid attempts can fail
+the logical job without changing their precise physical-run outcomes.
 
-- make `invalid` a terminal physical-attempt outcome and allocate a new run ID
-  for any retry; or
-- require `agent_run.invalid` followed by `agent_run.failed` for every invalid
-  response.
+## Approved blocked-review lifecycle decision
 
-Recommended contract: `invalid` is terminal. It precisely describes why the
-attempt ended, avoids a redundant event, and still permits a separately
-identified retry.
+The investigation state machine includes `review_blocked`. A valid review with
+`report_status: blocked` enters that state rather than the infrastructure-
+oriented `failed` state and cannot proceed to rendering without a later defined
+resolution workflow.
 
-## Blocked-review lifecycle decision
+## Approved corpus accounting decision
 
-`ReviewRecord.report_status` permits `blocked`, but the investigation state
-machine has no corresponding state. The workflow implementation therefore
-does not invent a transition.
+The corpus is the complete frozen, deduplicated set of discovered candidates.
+Raw provider results and duplicates remain visible in the discovery ledger but
+do not inflate the corpus. Membership states are `included`, `excluded`, and
+`membership_unresolved`. The latter means discovery or identity work could not
+route the candidate; a conservative screener `needs_review` result is included
+and analyzed.
 
-Pending choice:
+Only included papers receive reader and critic jobs. Their terminal analysis
+states are `complete`, `analysis_unresolved`, and `failed`. Reviewer and rendered
+accounting retain all seven counts and enforce:
 
-- add an explicit `review_blocked` investigation state; or
-- map a blocked review to the existing infrastructure-oriented `failed` state.
+```text
+expected = CorpusManifest.counts.discovered
+expected = included + excluded + membership_unresolved
+included = complete + analysis_unresolved + failed
+```
 
-Recommended contract: add `review_blocked`. A sound review that refuses report
-publication is materially different from a crashed or invalid investigation.
+`expected` is therefore the total frozen corpus size, while analysis outcome
+counts cover included papers only.
 
-## Corpus accounting decision
-
-The SQLite schema permits corpus membership values `included`, `excluded`, and
-`unresolved`. The manifest summary and its reason rules currently cover only
-included and excluded entries. Separately, the reviewer is described as
-receiving terminal accounting for every corpus entry even though excluded
-entries never enter the per-paper analysis state machine.
-
-Recommended contract:
-
-- retain all three membership states so unresolved discovery or identity work
-  remains visible;
-- define reviewer `expected`, `complete`, `unresolved`, and `failed` as
-  accounting over included papers only;
-- carry excluded and membership-unresolved totals separately in the reviewer
-  task and rendered corpus accounting.
-
-## Agent-behavior files requiring explicit approval
+## Remaining agent-behavior files requiring explicit approval
 
 Any changes to the following are behavior changes and remain pending review:
 
 - `AGENTS.md`
-- `docs/schema.md`
-- `docs/decisions.md`
 - `docs/roles/orchestrator.md`
+- `.claude/agents/paper-screener.md`
 - `.claude/agents/paper-reader.md`
 - `.claude/agents/critic.md`
 - `.claude/agents/reviewer.md`

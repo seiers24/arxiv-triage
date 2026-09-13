@@ -33,12 +33,7 @@ class ReviewReportStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReviewAcceptanceDecision:
-    """Result of accepting a valid reviewer artifact.
-
-    The specification defines ``blocked`` as a review result but omits a matching
-    investigation state. It is therefore represented without inventing a state
-    transition; callers must surface the block for resolution.
-    """
+    """Result of accepting a valid reviewer artifact."""
 
     next_state: InvestigationState | None
     blocked: bool
@@ -124,7 +119,7 @@ class WorkflowService:
         current: PaperState, *, has_valid_objection_or_uncertainty: bool
     ) -> PaperState:
         target = (
-            PaperState.UNRESOLVED
+            PaperState.ANALYSIS_UNRESOLVED
             if has_valid_objection_or_uncertainty
             else PaperState.COMPLETE
         )
@@ -151,7 +146,12 @@ class WorkflowService:
             # Use the shared transition exception and message for illegal states.
             transition_investigation(current, InvestigationState.RENDERING)
         if report_status is ReviewReportStatus.BLOCKED:
-            return ReviewAcceptanceDecision(next_state=None, blocked=True)
+            return ReviewAcceptanceDecision(
+                next_state=transition_investigation(
+                    current, InvestigationState.REVIEW_BLOCKED
+                ),
+                blocked=True,
+            )
         return ReviewAcceptanceDecision(
             next_state=transition_investigation(
                 current, InvestigationState.RENDERING

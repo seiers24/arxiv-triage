@@ -527,3 +527,51 @@ class TraceEvent(ContractModel):
             if not self.validation_pass and self.verdict_summary is not None:
                 raise ValueError("an invalid critic event cannot contain a verdict summary")
         return self
+
+
+# Core 2.0 uses the package models as its canonical implementation. These lazy
+# facades keep this legacy module's 1.0 names and import behavior unchanged
+# while giving deterministic callers one validation entry point per worker.
+def validate_core_v2_reader_output(
+    task: object,
+    value: object,
+) -> object:
+    from arxiv_triage.models.reader import validate_reader_output
+
+    return validate_reader_output(task, value)
+
+
+def validate_core_v2_critic_output(task: object, value: object) -> object:
+    from arxiv_triage.models.critic import validate_critic_output
+
+    return validate_critic_output(task, value)
+
+
+def validate_core_v2_reviewer_output(task: object, value: object) -> object:
+    from arxiv_triage.models.reviewer import validate_reviewer_output
+
+    return validate_reviewer_output(task, value)
+
+
+def validate_core_v2_run_artifact(
+    artifact_kind: Literal["agent_run", "validation", "outcome", "trace_event"],
+    value: object,
+) -> object:
+    """Validate one exact Core 2.0 deterministic run artifact."""
+
+    from arxiv_triage.models.run import (
+        AgentRun,
+        OutcomeRecord,
+        TraceEvent as CoreV2TraceEvent,
+        ValidationRecord,
+    )
+
+    contract = {
+        "agent_run": AgentRun,
+        "validation": ValidationRecord,
+        "outcome": OutcomeRecord,
+        "trace_event": CoreV2TraceEvent,
+    }[artifact_kind]
+    if isinstance(value, (str, bytes, bytearray)):
+        return contract.model_validate_json(value)
+    return contract.model_validate(value)

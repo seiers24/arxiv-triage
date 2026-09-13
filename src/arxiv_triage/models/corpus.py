@@ -1,0 +1,65 @@
+"""Frozen corpus membership contracts."""
+
+from __future__ import annotations
+
+from typing import Literal, Self
+
+from pydantic import Field, model_validator
+
+from .base import ContractModel, NonNegativeInt, PositiveInt, Rfc3339, Sha256, Text
+
+
+class CorpusEntry(ContractModel):
+    ordinal: PositiveInt
+    paper_id: Text
+    membership_status: Literal["included", "excluded"]
+    discovery_refs: list[Text] = Field(min_length=1)
+    inclusion_reason: Text | None
+    exclusion_reason: Text | None
+    # The specification says the initial manifest is immutable and terminal
+    # states are stored in separate paper-state artifacts.
+    terminal_state: None
+
+    @model_validator(mode="after")
+    def membership_reason_is_consistent(self) -> Self:
+        if self.membership_status == "included":
+            if self.inclusion_reason is None or self.exclusion_reason is not None:
+                raise ValueError("included entries require only an inclusion_reason")
+        elif self.exclusion_reason is None or self.inclusion_reason is not None:
+            raise ValueError("excluded entries require only an exclusion_reason")
+        return self
+
+
+class CorpusCounts(ContractModel):
+    discovered: NonNegativeInt
+    included: NonNegativeInt
+    excluded: NonNegativeInt
+    unresolved: NonNegativeInt
+    failed: NonNegativeInt
+
+
+class CorpusManifest(ContractModel):
+    schema_version: Literal["2.0"]
+    investigation_id: Text
+    search_plan_hash: Sha256
+    frozen_at: Rfc3339
+    entries: list[CorpusEntry] = Field(min_length=1)
+    counts: CorpusCounts
+    corpus_hash: Sha256
+
+    @model_validator(mode="after")
+    def entries_are_unique_and_counted(self) -> Self:
+        ordinals = [entry.ordinal for entry in self.entries]
+        paper_ids = [entry.paper_id for entry in self.entries]
+        if len(ordinals) != len(set(ordinals)):
+            raise ValueError("corpus ordinals must be unique")
+        if len(paper_ids) != len(set(paper_ids)):
+            raise ValueError("corpus paper_id values must be unique")
+        if self.counts.discovered != len(self.entries):
+            raise ValueError("counts.discovered must equal the number of entries")
+        included = sum(entry.membership_status == "included" for entry in self.entries)
+        if self.counts.included != included:
+            raise ValueError("counts.included does not match corpus entries")
+        if self.counts.excluded != len(self.entries) - included:
+            raise ValueError("counts.excluded does not match corpus entries")
+        return self

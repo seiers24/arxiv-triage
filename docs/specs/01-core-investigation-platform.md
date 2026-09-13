@@ -60,13 +60,19 @@ flowchart LR
     O --> W[Deterministic workflow service]
     W --> A[Acquisition adapters]
     A --> S[(Frozen source artifacts)]
-    W --> D[Agent dispatcher]
-    D --> R[Paper-reader workers]
-    D --> C[Critic workers]
-    D --> V[Corpus reviewer]
-    R --> P[Run persistence]
-    C --> P
-    V --> P
+    W --> M[(Frozen corpus manifest)]
+    W -. authorizes jobs .-> D[Agent dispatcher]
+    D -. dispatches .-> R[Paper-reader workers]
+    D -. dispatches after reader .-> C[Critic workers]
+    D -. dispatches after all papers .-> V[Corpus reviewer]
+    S -->|SourcePacket| R
+    R -->|ReaderRecord| P[Run persistence]
+    P -->|Canonical ReaderRecord| C
+    S -->|Same SourcePacket| C
+    C -->|CriticRecord| P
+    P -->|All canonical ReaderRecords and CriticRecords| V
+    M -->|Corpus membership and accounting| V
+    V -->|ReviewRecord| P
     P --> F[(Canonical JSON artifacts)]
     P --> T[(Append-only trace JSONL)]
     P --> Q[(SQLite query index)]
@@ -75,9 +81,16 @@ flowchart LR
     X --> B[Report, table, human-review queue]
 ```
 
-The orchestrator is the only role allowed to dispatch workers. Workers cannot
-message or spawn one another. Independent papers may run concurrently, while a
-single paper always follows source → reader → critic order.
+Dashed edges are dispatch control; solid edges are persisted data flow. The
+reviewer is not launched alongside paper workers. It receives the frozen corpus
+manifest plus every canonical reader and critic record after all paper chains
+reach a terminal state.
+
+Independent paper chains run concurrently. Within one chain, the critic must
+follow its reader because it critiques that reader's record. The corpus-level
+barrier is therefore: parallel `(source → reader → critic)` chains → one
+reviewer. Workers cannot message or spawn one another; artifacts move through
+run persistence and are dispatched again by the orchestrator.
 
 ## 4. Role contracts
 

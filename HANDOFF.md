@@ -10,6 +10,7 @@ Updated: 2026-09-13
 4. `docs/decisions.md`
 5. `docs/specs/01-core-investigation-platform.md`
 6. `docs/reviews/investigation-implementation-review.md`
+7. `docs/reviews/screening-contract-review.md`
 
 Repository documentation is authoritative. Escalate uncertain core design
 decisions instead of silently choosing. Deterministic work belongs in code;
@@ -56,6 +57,46 @@ underlying artifacts.
 The paper-screener behavior is described but remains ineligible for dispatch
 until exact `ScreeningTask` and `ScreeningRecord` contracts and deterministic
 validation exist.
+
+## Screening-contract review in progress
+
+`docs/reviews/screening-contract-review.md` is a committed proposal, not an
+approved runtime contract. It was produced after three read-only parallel
+audits of model, workflow, and persistence implications. No audit worker made
+repository changes.
+
+The proposal defines reviewable shapes for:
+
+- `ScreeningScope`
+- `CandidatePaper` and `CandidateSet`
+- `ScreeningEvidenceSpan`
+- `ScreeningTask`, `ScreeningDecision`, and `ScreeningRecord`
+- screening batch identity, lifecycle barriers, retries, persistence, and
+  deterministic validation
+
+It also identifies the central semantic mismatch: `ObjectiveProfile` contains
+assessment and ranking criteria, while `SearchPlan` contains inclusion and
+exclusion rules. A screener cannot apply the stated exclusion boundary from
+the objective alone. The recommended solution is a closed, hash-bound
+`ScreeningScope` supplied alongside the objective.
+
+The proposal's S1-S10 decisions require explicit human approval or revision
+before implementation. In particular, do not silently decide:
+
+- screening scope ownership;
+- batch identity or lifecycle states;
+- nullable abstracts and title evidence spans;
+- identity-failure routing;
+- partial-batch salvage or exhausted-batch behavior;
+- processing caps or deterministic hard exclusions;
+- immediate handling of `needs_review`;
+- incomplete-search behavior;
+- authoritative workshop screening bypass; or
+- schema evolution behavior.
+
+The recommended workshop policy is to bypass semantic screening only when the
+component declares authoritative membership, preserving every listed workshop
+paper for full analysis. Open discovery continues through semantic screening.
 
 ## Implemented foundation
 
@@ -118,16 +159,27 @@ Phase 1 provides contracts, workflow guards, persistence primitives, worker
 definitions, and tests. It does not yet provide the executable investigation
 pipeline.
 
-Next implementation order:
+Do not implement screening until the user approves or revises S1-S10 in
+`docs/reviews/screening-contract-review.md`. After approval, use this order:
 
-1. Define exact `ScreeningTask` and `ScreeningRecord` contracts.
-2. Add the screening validation gateway and contract fixtures.
-3. Implement the investigation workflow CLI and task preparation/acceptance.
-4. Implement deterministic source acquisition and normalization.
-5. Implement deterministic ranking, report rendering, database rebuild, and
+1. Amend canonical schema and decision documentation.
+2. Implement screening models, hashes, and fixtures.
+3. Implement `validate_screening_output`.
+4. Add screening batch scope, lifecycle, retries, persistence, and corpus
+   coverage guards.
+5. Present any paper-screener behavior diff for human review before commit.
+6. Implement the investigation workflow CLI and task preparation/acceptance.
+7. Implement deterministic source acquisition and normalization.
+8. Implement deterministic ranking, report rendering, database rebuild, and
    reconciliation command entry points.
-6. Run the synthetic three-paper end-to-end acceptance investigation.
-7. Begin the workshop-analysis vertical slice.
+9. Run the synthetic three-paper end-to-end acceptance investigation.
+10. Begin the workshop-analysis vertical slice.
+
+The screening slice proposes only deterministic internal Python surfaces:
+candidate freezing and hashing, ordered batching, task preparation, output
+validation, global coverage/routing guards, and SQLite rebuild support. It does
+not introduce Tavily, another web provider, browser access, or worker tools;
+the paper-screener remains `tools: []`.
 
 Do not begin Tavily integration, proposal search, proposal generation, latest-
 developments analysis, a vector store, UI, or workflow framework during the

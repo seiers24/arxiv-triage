@@ -1,0 +1,528 @@
+This CVPR Workshop paper is the Open Access version, provided by the Computer Vision
+Foundation. Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+
+A Spike-Gated Residual Unit for Information Flow Control in Transformers
+
+Kiran Nair Rodrigue Rizk KC Santosh
+USD Artificial Intelligence Research, Department of Computer Science
+University of South Dakota, Vermillion, SD 57069, USA
+kiran.prasannannair@coyotes.usd.edu rodrigue.rizk@usd.edu kc.santosh@usd.edu
+
+Abstract and inference [8, 13]. This rising energy burden is now rec-
+ognized as a fundamental challenge, with prior work high-
+Large Language Models deliver state-of-the-art perfor- lighting the substantial electricity demand of LLMs as an
+mance but incur substantial computational and energy costs urgent obstacle to sustainable deployment [13]. By con-
+due to their dense, fixed-depth Transformer architectures. trast, the human brain operates on only ∼ 20 W of power
+We introduce a spike-gated residual unit that enables dy- and uses sparse, event-driven spike signals. Spiking Neural
+namic depth adaptation in pretrained Transformers with- Networks (SNNs) seek to mimic this efficiency: when im-
+out modifying backbone weights. By inserting lightweight plemented on neuromorphic hardware, SNNs can replace
+spike-gated unit into each residual block and optimizing dense multiply-add operations with binary spike compu-
+a sparsity-aware objective with a controllable regulariza- tations [28]. SNNs are “an energy efficient alternative to
+tion coefficient λsparsity , the model learns to selectively traditional neural networks” under event-driven execution
+bypass redundant layers during inference. Using a gate- [11]. Driven by these insights, we explore a paradigm shift
+only fine-tuning strategy on TinyLlama-1.1B, our unit re- toward sparse, spiking communication within the Trans-
+duces average active depth to 76.5%, achieving a 1.31× former block, aiming to achieve a significant reduction in
+theoretical efficiency gain while maintaining competitive operational energy footprints while maintaining a high ceil-
+performance (0.93× of the original zero-shot HellaSwag ing for linguistic performance.
+accuracy compared to the dense TinyLlama-1.1B base-
+line). Layer-wise analysis reveals an emergent hierarchy Recent works have begun exploring spiking Transform-
+in which early and late layers remain critical while inter- ers as a path to efficiency. In General Language Un-
+mediate blocks are selectively suppressed under sparsity derstanding Evaluation (GLUE) benchmarks, prior work
+pressure. These results demonstrate that spike-gated resid- demonstrates that SNN-based approaches can enable
+ual unit provides a practical software-level pathway toward energy-efficient LLM inference, introducing techniques
+energy-aware Transformer inference, enabling controllable such as masked spike encodings and analog compute-
+trade-offs along an efficiency–intelligence Pareto frontier in-memory that achieve over 2× energy reduction while
+without requiring full retraining or specialized neuromor- maintaining competitive accuracy [26]. Similarly, spe-
+phic hardware. To support transparency and reproducibil- cialized hardware accelerators propose executing Trans-
+ity, the complete implementation is available at https: former blocks using spiking neurons: a recent design for
+//github.com/USD- AI- ResearchLab/spike- an “energy-efficient spike transformer accelerator” reports
+gated-residual-unit.git. matching the performance of a conventional Transformer
+while consuming only a fraction of the power [3]. On the
+software side, a recent review work demonstrates a com-
+1. Introduction plete neuromorphic LLM by transforming a 1.5B-parameter
+model into spike-train dynamics. This architecture elimi-
+Large Language Models (LLMs) have revolutionized AI but nates all matrix multiplications and achieves approximately
+suffer from extreme computational and energy demands. 20× greater energy efficiency compared to GPU base-
+For example, training the 175-billion-parameter GPT-3 re- lines [25]. Even in vision tasks, transformer-based SNNs
+quired on the order of 175 years on a single high-end GPU. have attained state-of-the-art accuracy. For example, Meta-
+Modern LLMs drive unprecedented capabilities, but their SpikeFormer [25] achieved 80% top-1 accuracy on Im-
+dense, feedforward design means every layer and neuron ageNet using purely spiking layers, outperforming prior
+is active for each token, leading to “wasted computation” SNN models while relying solely on sparse binary opera-
+on easy inputs and a critical electricity demand for training tions [28, 29].
+
+3469
+In parallel, a separate line of work studies conditional 2.5 [10], Phi-2 [12]) and sparse (Lightweight MoE) [1]
+computation in Transformers. Standard LLMs employ a baselines across WikiText-2, HellaSwag, C4, and LAM-
+fixed stack of layers for all inputs; however, multiple studies BADA.
+note that this design wastes computation on “trivial” tokens The remainder of this paper is organized as follows. Sec-
+and lacks flexibility for complex reasoning [8]. Techniques tion 2 reviews prior work related to SNNs and efficient
+such as early exiting, layer skipping, and router-based gat- Transformer architectures. Section 3 details the S-GRU,
+ing have therefore been developed so that simpler inputs ac- including the spiking-gated mechanism and the sparsity-
+tivate fewer layers. For example, mixture-of-experts (MoE) aware objective function. Section 4 presents our empiri-
+architectures route each token through only a small subset cal evaluation, highlighting the trade-offs between language
+of expert subnetworks. The sparsely-gated MoE model [21] modeling performance and compute depth. Finally, the im-
+enabled effective models with hundreds of billions of pa- plications of these findings, future works and limitations are
+rameters by activating only a limited number of experts per discussed in Section 6, and Section 7 summarizes the paper.
+token. Similarly, Dr. llm [8] trains per-layer routers to skip
+or repeat Transformer blocks, demonstrating that early lay- 2. Related Works
+ers are almost always utilized, middle layers can be skipped
+for easier tasks, and late layers may be repeated for more SNNs have emerged as a compelling alternative for energy-
+difficult inputs. These dynamic-depth approaches yield efficient deep learning, leveraging sparse binary signals to
+substantial computational gains. Spike-driven Transformer minimize computational overhead. Recently, the integra-
+models, for instance, report approximately 51% faster train- tion of SNNs with Transformer architectures has yielded
+ing and 70% faster inference by exploiting sparsity [28]. In significant performance gains in computer vision [22] and
+effect, such methods trace a Pareto frontier between accu- robotics [5]. Early efforts, such as those by Zhang et al.
+racy and compute, enabling selection of a “sweet spot” in [30] and Zhou et al. [33], laid the foundation for combin-
+which easy inputs consume minimal layers while challeng- ing the long-range dependency modeling of Transformers
+ing inputs still receive full processing. with the event-driven nature of SNNs. These architectures
+typically replace standard Softmax attention and Multi-
+The Spike-Gated Residual Unit (S-GRU) bridges the gap Layer Perceptrons (MLPs) with spike-driven components
+between the representational power of high-performance utilizing Leaky Integrate-and-Fire (LIF) neurons [16, 32].
+Transformers and the inherent energy efficiency of SNNs. The primary advantage of these Spike-based Transform-
+By introducing per-layer gating units into a pretrained ers lies in their hardware-friendly operations; for instance,
+Transformer backbone, we enable the model to apply a spike-driven self-attention mechanisms can replace energy-
+learned activation threshold that determines whether a spe- intensive floating-point multiplications with bitwise AND
+cific layer is executed or remains dormant for a given for- operations and sparse accumulations [23]. Subsequent re-
+ward pass. This framework implements a form of learned search has explored architectural refinements to further
+architectural sparsity inspired by event-driven computation. enhance efficiency, including the use of Spiking Wavelet
+While our architecture demonstrates a 1.31× theoretical ef- transforms [4], MoE [34], and specialized spatial-temporal
+ficiency gain through this reduction in active layers, we attention modules [15]. Furthermore, advancements in
+note that these gains are currently bounded by the opti- ANN-to-SNN conversion techniques [9] have bridged the
+mization of standard GPU kernels for dense matrix oper- performance gap between dense and spiking models. Col-
+ations. As dynamic skipping of individual residual units lectively, these methods achieve substantial efficiency, with
+can incur kernel launch overheads on existing parallel ar- reports of faster training and faster inference speeds relative
+rays, this work serves as a critical software-level proof-of- to conventional dense Transformers by maximizing event-
+concept, establishing the algorithmic foundation for future driven dataflows.
+hardware-aware compilers. Our contributions are threefold: The extension of the spiking paradigm to LLMs has re-
+1. S-GRU Architecture: We introduce the S-GRU, a cently gained momentum as a viable path toward energy-
+novel neuromorphic-inspired module that enables dy- efficient inference. Notable advancements include Xu et al.
+namic, event-driven layer skipping within pretrained [25], which mathematically converts 1.5B-parameter Trans-
+Transformer backbones. formers into neuromorphic networks to eliminate matrix
+2. Depth Optimization: We propose a sparsity-aware multiplications, and Xing et al. [24], which scales SNNs
+training framework using a regularization penalty to the LLM regime using saliency-based spiking to main-
+λsparsity , allowing the model to self-optimize its com- tain performance. Parallel to these structural spiking transi-
+putational depth based on input complexity. tions, the field of conditional computation has explored dy-
+3. Cross-Domain Validation: We demonstrate that S- namic depth as a means of reducing computational waste.
+GRU achieves superior efficiency-performance trade- Recent strategies for adaptive layer skipping [17, 18] and
+offs against SOTA dense (TinyLlama [31], Qwen- sublayer skipping [7] demonstrate that not all tokens require
+
+3470
+the full depth of a model, with certain middle layers of- sion to form a context vector s ∈ Rdmodel :
+ten being redundant for simpler inputs. Various approaches
+have emerged to govern these skipping decisions, ranging
+\mathbf {s} = \frac {1}{B} \sum _{t=1}^{B} \mathbf {x}_{l,t}, (3)
+from residual gates that learn “what layers to skip when”
+[14] to Markov Decision Policies that enable input-aware
+dynamic skipping [27]. While some methods investigate the where xl,t ∈ Rdmodel represents the hidden state vector at
+theoretical conditions for skipping in multimodal contexts layer l and sequence position t, B denotes the block size
+[6] or focus on architectural efficiency for general infer- (sequence length),(B = 256). t is the index representing
+ence [19], many require significant retraining or specialized a specific token position within the block, ranging from 1
+hardware. Recent efforts have introduced continuous gating to B, dmodel is the hidden dimension of the transformer
+units, such as the Evaluator Adjuster Unit and Gated Resid- backbone (dmodel = 2048). s ∈ Rdmodel is the resulting
+ual Connections to dynamically modulate feature flow and context vector that provides a global summary of the input
+improve contextual adaptability [2]. However, these mech- sequence, serving as the input to the spike-gated unit which
+anisms focus primarily on enhancing representation quality utilizes a MLP to determine the dynamic scalar gate.
+through soft scaling and often require training models from
+scratch. In contrast, our S-GRU introduces a lightweight g_l = \sigma ((\text {SiLU}(\mathbf {s} \mathbf {W}_1 + \mathbf {b}_1)) \mathbf {W}_2 + b_2), (4)
+software-level gating solution that retrofits onto pretrained
+LLMs. By incorporating an explicit penalty λsparsity into where W1 ∈ Rdmodel ×(h·dmodel ) is the weight matrix of the
+the training loss, we leverage spiking-inspired sparsity to first linear layer, which projects the context vector into a
+navigate a controllable Pareto frontier between inference higher-dimensional latent space. b1 ∈ Rh·dmodel is the bias
+speed and model accuracy without the need for neuromor- vector for the first linear layer, h is the hidden multiplier
+phic hardware. that determines the width of the gate’s hidden layer. In our
+implementation, h = 2, resulting in a hidden dimension of
+3. Spike-Gated Residual Unit Architecture 2 × 2048 = 4096, SiLU(·) is the Sigmoid Linear Unit ac-
+tivation function (also known as Swish), defined as f (x) =
+The S-GRU architecture introduces a dynamic, input- x · σ(x) which introduces non-linearity to allow the gate to
+dependent gating mechanism designed to optimize the com- learn complex skipping patterns, W2 ∈ R(h·dmodel )×1 is the
+putational efficiency of LLMs. Unlike static pruning or weight matrix of the second linear layer, which reduces the
+fixed layer-dropping techniques, S-GRU adapts its depth hidden representation down to a single scalar logit, b2 ∈ R
+per forward pass by evaluating the importance of each resid- is the scalar bias for the final layer, initialized to a high value
+ual block in real-time. By augmenting a pre-trained trans- (e.g., 5.0) to ensure the gate starts in an “open” state and
+former backbone with lightweight spike-gated units, the σ(·) is the Sigmoid function, which ensures that gl remains
+model learns to selectively bypass layers that contribute within the unit interval, effectively acting as a “soft” skip
+minimally to the final output, thereby reducing the total connection that the model can optimize during the sparsity-
+Flops required for inference without necessitating a full re- aware training phase.
+training of the underlying model weights.
+3.2. Sparsity-Aware Training
+3.1. The Spike-Gated Unit The training objective of S-GRU is to minimize the standard
+The core component of our architecture is the spike-gated language modeling loss while simultaneously maximizing
+Unit. In a standard Transformer, each layer l performs the sparsity of the network. To achieve this without degrad-
+a transformation fl on the input hidden states xl (xl ∈ ing the pre-trained capabilities of the model, we employ a
+RB×dmodel ) followed by a residual addition: Gate-Only fine-tuning strategy.
+During this phase, the parameters of the pre-trained
+\mathbf {x}_{l+1} = \mathbf {x}_l + f_l(\mathbf {x}_l). (1) transformer backbone θLLM are frozen, and only the pa-
+rameters of the spike-gated unit’s θG are updated:
+As shown in Fig.1, in the S-GRU, the scalar gate gl ∈ [0, 1]
+is produced by a spike-gated unit. The residual connection \nabla _{\theta } \mathcal {L} = \nabla _{\theta _{G}} \mathcal {L}, \quad \text {subject to } \frac {\partial \mathcal {L}}{\partial \theta _{LLM}} = 0, (5)
+is modified as follows:
+where ∇θ L is the Total Gradient Vector with respect to all
+\mathbf {x}_{l+1} = \mathbf {x}_l + g_l \cdot (f_l(\mathbf {x}_l) - \mathbf {x}_l). (2) parameters in the network, ∇θG L is the Gate Gradient term
+signifies that the optimizer only computes and applies up-
+The spike-gated unit, first compresses the input sequence dates to the parameters within the gated units, specifically
+through global average pooling across the sequence dimen- the MLP weights and biases {W1 , b1 , W2 , b2 }, ∂θ∂L LLM
+
+3471
+(a) Overall language model architecture showing the 22 sequential decoder (b) Spiking Residual and dynamic gating module used for each decoder
+layers (highlighted in light blue), where the S-GRU is applied to the output layer.
+of each of the decoder layer.
+
+Figure 1. S-GRU integrated architecture. Residual modification used in each layer: the input xl is passed through the frozen transformer
+block Fl to compute a residual ∆ = Fl (xl ) − xl , which is modulated by a learned spike gate gl ∈ [0, 1] generated by an MLP, producing
+the output xl+1 = xl + gl · ∆.
+
+which is the partial derivative of the loss with respect to by non-differentiable binary spikes in traditional spiking ar-
+the transformer backbone. By setting this term to zero, we chitectures. By maintaining a fully differentiable objective,
+freeze the original model weights and ∇ is the Gradient Op- the model can navigate the sparsity-performance trade-off
+erator, which collects all partial derivatives into a vector. through standard backpropagation. This formulation en-
+The model is optimized using a composite loss function sures that a layer is only bypassed if the resulting increase in
+Ltotal , which introduces a penalty on the gate activations. LLM is smaller than the decrease in the sparsity penalty, ef-
+We define the total objective as: fectively performing a cost-benefit analysis of each layer’s
+contribution during the forward pass.
+\mathcal {L}_{total} = \mathcal {L}_{LM} + \lambda _{sparsity} \cdot \left ( \frac {1}{L} \sum _{l=1}^{L} \bar {g}_l \right ), (6) 3.3. Gate Initialization
+
+where L is the total number of decoder layers, ḡl is the mean The initialization of the spike-gate parameters is critical
+gate activation for layer l across the batch and sequence, for stabilizing the transition from a dense pre-trained back-
+and λsparsity is a hyperparameter controlling the trade-off bone to a sparse gated architecture. Our MLP configura-
+between model performance and computational efficiency. tion consists of four primary learnable parameters: θG =
+Let LLM denote the cross-entropy loss for causal language {W1 , b1 , W2 , b2 }. Standard random initialization (e.g.,
+modeling. Xavier or Kaiming) [20] for these parameters typically re-
+sults in a pre-activation logit z ≈ 0, yielding gate outputs
+\mathcal {L}_{LM} = -\frac {1}{T} \sum {t=1}^{T} \log P(x_t \mid x_{<t}; \theta ), (7) gl ≈ 0.5 at the onset of training. Such a state would imme-
+diately bypass 50% of the network’s processing capacity,
+which is the classic Average Negative Log-Likelihood leading to catastrophic forgetting and gradient instability.
+(NLL) over a sequence of tokens. By including the gate To mitigate this, we implement a High-Bias Start strat-
+values directly in the loss function, the optimizer is incen- egy specifically targeting the final projection layer. While
+tivized to drive gl toward zero. Because the sigmoid activa- the input projection parameters {W1 , b1 } are initialized us-
+tion is continuous and differentiable, the gradients from the ing standard Kaiming uniformity to facilitate feature dis-
+sparsity penalty flow directly into the spike-gate weights, covery, the output weights are set to zero, W2 = 0, and
+allowing the model to learn which layers are redundant for the bias is initialized as b2 = gate init bias. By setting
+the target domain. Notably, this Sigmoid-based relaxation the final weight matrix W2 to zero, we decouple the gate’s
+ensures stable gradient flow without requiring a Straight- output from the input hidden states s during the initial for-
+Through Estimator (STE), which is typically necessitated ward pass. Given the sigmoid activation function σ(z) =
+
+3472
+(1 + e−z )−1 , setting a high initial bias (e.g., b2 = 5.0) en- requiring less than 7 GB of VRAM during the gating opti-
+sures that the gate activation gl saturates near unity: mization phase.
+
+g_l = \sigma ((\text {SiLU}(\mathbf {s} \mathbf {W}_1 + \mathbf {b}_1)) \mathbf {W}_2 + b_2) = \sigma (0 + 5.0) \approx 0.993. 4.2. Comparative Analysis
+(8) We evaluate the S-GRU’s performance by comparing its
+This initialization ensures that at step 0, the Spike-Gates perplexity and zero-shot accuracy against the original dense
+behaves nearly identically to the original dense backbone, TinyLlama-1.1B backbone and a static layer-dropping base-
+preserving its full predictive power. As training progresses, line. Our results indicate that at a sparsity constraint of
+the gradients from the sparsity penalty λsparsity compete λsparsity = 0.5, the S-GRU achieves a perplexity of 12.46,
+with the language modeling loss to pull these biases down- representing a controlled degradation of 2.28 units com-
+ward. This allows the model to “prune” layers gracefully, pared to the dense baseline’s perplexity of 10.18. Notably,
+only reducing gl for a specific layer once the network has on the HellaSwag benchmark, the S-GRU retains 90.9% of
+learned that the layer’s residual contribution is redundant the original reasoning performance (41.0% vs. 44.0% base-
+for the target objective. line), significantly outperforming the static baseline which
+suffers from a catastrophic drop in accuracy when an equiv-
+4. Experiments alent number of layers are removed. This gap suggests that
+the spike-gate units successfully identify and preserve “crit-
+4.1. Setup
+ical” layers required for complex reasoning while bypass-
+To evaluate the efficiency and effectiveness of the S-GRU, ing redundant computations in simpler contexts, effectively
+we perform experiments using a dense-to-sparse transfor- shifting the Pareto frontier of the accuracy-efficiency trade-
+mation on a representative small-scale LLM. off.
+To validate the theoretical efficiency and measure the la-
+Datasets and Tokenization. Our primary training and tency of mobile System-on-Chip (SoC), we manually con-
+evaluation corpuses are WikiText-2, HellaSwag, C4 and figured the CUDA environment to disable asynchronous
+LAMBADA, tokenized into sequences of 256 tokens us- kernel launching, forcing a single-threaded, single-batch
+ing the standard Llama-3 tokenizer. For the sparsity-aware execution. This setup effectively mimics the linear process-
+training phase, we utilize a subset of 8,000 training ex- ing constraints characteristic of SoC-based architectures.
+amples and 1,000 validation examples. To evaluate the We defined the cumulative inference latency (L) as the syn-
+preservation of downstream reasoning and long-range de- chronized wall-clock time required to process a fixed se-
+pendency retention under dynamic depth constraints, we quence of T = 512 tokens, calculated as:
+further benchmark the model on the HellaSwag common-
+sense reasoning task (100 zero-shot samples), the LAM- L = \sum _{t=1}^{T} \operatorname {time}(\operatorname {forward}(x_t)), (9)
+BADA narrative context dataset, and the C4 (Colossal Clean
+Crawled Corpus) validation set. where forward(xt ) represents the execution of the model’s
+computational graph for a single token. We measured a
+Model Backbone & Training Configuration We em- baseline latency (Lbase ) of 73.84 ms for the dense TinyL-
+ploy TinyLlama-1.1B as our base transformer architecture. lama model versus 44.31 ms for our S-GRU (Lsgru ). This
+This model consists of 22 layers with a hidden dimension represents a 40.0% Relative Speedup (S), derived using the
+of dmodel = 2048. Following the methodology described standard efficiency metric:
+in Section 3, we inject 22 spike-gate units (one per residual
+block) utilizing the MLP configuration. We train only the S = \left ( \frac {L_{\text {base}} - L_{\text {sgru}}}{L_{\text {base}}} \right ) \times 100\%. (10)
+gate parameters θG for 400 steps using the AdamW opti-
+mizer. Based on the stabilization strategy in 3.2, we set the Comparative benchmarks against high-parameter models
+initial gate bias to 3.0. The learning rate is set to 1 × 10−3 are detailed in Table 1. Furthermore, peak VRAM con-
+with zero weight decay to prevent the gates from being pre- sumption was quantified using a memory tracking utility to
+maturely forced to zero by the optimizer’s regularization monitor the maximum GPU allocation throughout the in-
+rather than the sparsity loss. All experiments are conducted ference cycle, ensuring that our performance gains do not
+in BFloat16 precision to match the original model’s train- come at the cost of exceeding edge-device memory con-
+ing regime. straints.
+
+5. Ablation Study
+Hardware. All experiments were performed on a single
+NVIDIA RTX 5060 GPU. Given that the language model To characterize the relationship between computational cost
+weights are frozen, the memory overhead remains minimal, and model fidelity, we performed a sweep of the sparsity
+
+3473
+Table 1. Latency, VRAM, and Speedup comparison. Perplexity Collapse under Structured Layer Pruning
+1000
+[6-15]
+Model Lat. VRAM Spd.
+500
+
+WikiText-2 Perplexity (Log Scale)
+TinyLlama [31] 73.84 4249 +40%
+250
+Phi-2 [12] 13783 10953 +99%
+Qwen-2.5 [10] 130.27 6063 +66%
+100
+DeepSeek-MoE [1] 91.79 5221 +51% [8-13]
+50
+S-GRU (Ours) 44.31 5654 –
+[9-12]
+20
+[10-11]
+Baseline [11]
+penalty across λsparsity ∈ {0.0, 0.2, 0.5, 1.0}. The ob- 10
+0 2 4 6 8 10
+served learning trajectories across these coefficients reveal Number of Layers Statically Removed
+a distinct, non-linear transition in the emergent architecture
+of the S-GRU. For λsparsity = 0.0, the model retains near- Figure 2. Non-linear relationship between static layer removal and
+maximal density with an overall mean gate activation of model coherence on WikiText-2. A critical threshold is observed
+0.98, successfully preserving the original dense backbone at 4 layers (21.49 PPL), beyond which the model undergoes insta-
+bility. The indices of the ablated decoder layers are marked in red.
+state. As λsparsity increases to 0.2, the gates begin a se-
+lective suppression of specific layer blocks, a trend that ac-
+celerates significantly at λsparsity = 0.5. In this regime,
+59% fewer active parameters per forward pass, respec-
+the overall mean gate activation drops to 0.76, and the per-
+tively. Although a modest drop is observed on HellaSwag
+centage of layers exceeding the 0.95 activation threshold
+(41.0%) compared to TinyLlama (44.0%), this trade-off is
+collapses toward zero. Finally, at λsparsity = 1.0, the
+offset by a theoretical throughput gain of 1.31×. Beyond
+model reaches an extreme minimalist state, identifying the
+standard benchmarks, the model also demonstrates strong
+absolute lower bound of depth required to maintain func-
+cross-domain generalization: on C4, it achieves a perplex-
+tional coherence. This shift from dense to sparse process-
+ity of 16.5, outperforming Qwen-2.5-1.5B (19.03 PPL) and
+ing follows a clear trade-off curve, which is visualized in
+matching Phi-2 (16.71 PPL), while on LAMBADA it attains
+the sparsity-perplexity relationship shown in Fig. 4. De-
+28.68 PPL, narrowing the gap with efficient architectures
+tailed analysis of the specific layer-wise behaviors and the
+such as DeepSeek-MoE [1]. While TinyLlama remains
+transition dynamics within this curve is provided in the Dis-
+competitive in raw next-token prediction, the consistent per-
+cussion section (Section 6).
+formance of S-GRU across both general web text and long-
+To further validate the necessity of this dynamic gating, context benchmarks indicates that the learned spike-gate
+we conducted a sensitivity analysis using static structured dynamics do not simply prune the network, but instead re-
+layer pruning (Fig. 2). Unlike the adaptive behavior of the configure the dense backbone into an effective sparse repre-
+S-GRU, static removal of decoder layers leads to an imme- sentation that generalizes beyond the training distribution.
+diate intelligence collapse. While the baseline perplexity is
+10.18, the static removal of just 4 layers (18% of the model)
+causes a 2× increase in perplexity (21.49 PPL), eventu-
+ally resulting in complete numerical instability at 10 layers Resource Efficiency and Comparison with Compression
+(1137 PPL). This stark contrast suggests that the S-GRU Strategies. Beyond theoretical reductions in FLOPs, S-
+does not merely remove layers, but rather dynamically pre- GRU demonstrates substantial practical advantages in real-
+serves the integrity of the residual stream based on input world deployment. As shown in Table 1, the proposed
+complexity, a feat impossible through traditional static com- framework achieves a wall-clock latency of 44.31 ms for a
+pression methods. 512-token forward pass, corresponding to a 40.0% speedup
+over the TinyLlama baseline (73.84 ms). This improvement
+6. Discussion becomes more pronounced when compared to larger mod-
+els such as Phi-2 and Qwen-2.5, which incur significantly
+Architectural Efficiency and Generalization. The re- higher latencies of 13,783 ms and 130.27 ms, respectively.
+sults in Table 2 demonstrate that S-GRU achieves a strong In addition, S-GRU maintains a competitive VRAM foot-
+balance between linguistic modeling capacity and archi- print of 5,654 MB. Although slightly higher than TinyL-
+tectural efficiency. At a mean gate activation of 76.5%, lama due to the overhead introduced by gate parame-
+the model attains a WikiText-2 perplexity of 12.45, match- ters, it remains substantially lower than Phi-2 (10,953 MB)
+ing the dense Qwen-2.5-1.5B (12.49 PPL) and outperform- and Qwen-2.5 (6,063 MB), highlighting its suitability for
+ing the larger Phi-2 (13.14 PPL), while utilizing 26% and memory-constrained deployment scenarios. To contextual-
+
+3474
+Table 2. Comprehensive Evaluation of S-GRU Against Baseline LLMs. We compare models across general reasoning (HellaSwag),
+efficiency (Active Layers, Speedup), and linguistic generalization (WikiText-2, C4, and LAMBADA). Our method significantly improves
+efficiency while maintaining competitive perplexity across diverse corpora.
+
+General Performance Efficiency Perplexity (PPL) ↓
+Model Params HellaSwag ↑ Wiki-2 ↓ Active Layers ↓ Speedup ↑ C4 LAMBADA Avg.
+TinyLlama-1.1B [31] 1.1B 44.0% 10.18 100% 1.00x 11.00 22.30 14.49
+Phi-2 [12] 2.7B 52.0% 13.14 100% 0.41x* 16.71 37.02 22.29
+Qwen-2.5-1.5B [10] 1.5B 52.0% 12.49 100% 0.73x* 19.03 28.85 20.12
+DeepSeek-MoE [1] 1.3B 46.0% 11.26 100% 1.00x* 14.84 23.34 16.48
+S-GRU (Ours) 1.1B 41.0% 12.45 76.5% 1.31x 16.50 28.68 19.21
+*Theoretical speedup relative to TinyLlama-1.1B base throughput.
+
+Figure 3. Evolution of Architectural Sparsity (λsparsity = 0.5). The heatmap displays the mean gate activation for each of the 22 layers
+over 400 training steps. Darker regions indicate layers the model has learned to bypass, achieving a 23.5% reduction in compute depth.
+
+ize these gains, we analyze alternative compression strate- and aggressive bit-width reduction (e.g., INT4) frequently
+gies, including structured pruning and post-training quan- leads to significant degradation. This observation is further
+tization (PQT), in the setting of Small Language Models supported by Zhou et al. [35], shows that pruning substan-
+(SLMs). As shown in Fig. 2, structured pruning on TinyL- tially harms reasoning ability and overall accuracy in SLMs
+lama leads to rapid performance degradation: progressively (0.5B–3.8B). Taken together, these limitations highlight the
+removing layers identified as redundant (e.g., layer 11, fol- need for dynamic, input-adaptive sparsity mechanisms.
+lowed by layers 10–11 and 9–12) results in increasing per-
+plexity, ultimately resulting in a sharp collapse, while re-
+moving a larger contiguous block of layers (6–15) causes Layer wise Gate Dynamics. The layer-wise gate dynam-
+perplexity to exceed 1000. These findings suggest that ics across the tested λsparsity spectrum reveal a structured,
+structured pruning is not a viable strategy for small mod- non-uniform pruning process that prioritizes specific archi-
+els such as TinyLlama, where limited parameter redundancy tectural “anchors.” As illustrated in the gate activation heat
+leaves little room for permanent weight removal. Similarly, plot (Fig. 3), the model exhibits an emergent hierarchy of
+while PQT is highly effective for large-scale models (e.g., layer importance. At λsparsity = 0.0, all 22 layers main-
+LLaMA-3-70B) due to their inherent redundancy, it is often tain near-maximal saturation (≈ 0.95 − 0.98), confirming
+suboptimal for SLMs. In models with fewer than 2B param- that every block remains functionally active. However, as
+eters, weights are already densely packed with information, the sparsity pressure increases to λsparsity = 0.2, we ob-
+serve the first signs of selective thinning, particularly in the
+
+3475
+“short-circuit” the computation of skipped layers at the reg-
+ister level. Furthermore, while the current gating mecha-
+nism utilizes a sequence-wide summary, exploring token-
+level dynamic sparsity could further refine the model’s ef-
+ficiency by skipping computations for “easy” tokens (e.g.,
+punctuation or common stop words). Beyond language
+modeling, we envision that the S-GRU framework could
+be generalized to other modalities, such as vision or multi-
+modal transformers, where dynamic depth remains a critical
+challenge. Finally, extending this framework to larger mod-
+els, such as Llama-3-70B, would determine if the emergent
+layer-redundancy observed in TinyLlama scales to architec-
+tures with deeper residual hierarchies.
+
+7. Conclusion
+Figure 4. Efficiency-Intelligence Pareto Frontier for S-GRU. In this work, we introduced a S-GRU framework that en-
+The plot illustrates the trade-off between model perplexity and av- ables dynamic depth adaptation in pretrained Transformer-
+erage gate activity (compute savings) across varying sparsity con- based large language models. By integrating lightweight
+straints (λsparsity ). The shaded green region highlights the opti- spike-gated units into each residual block and optimizing
+mal operating range where significant compute savings (5%–15%) a sparsity-aware objective with a controllable regulariza-
+are achieved with minimal impact on perplexity. As sparsity in- tion coefficient λsparsity , S-GRU autonomously learns to
+creases (λsparsity = 1.0), compute savings reach ∼33% at the bypass redundant layers while preserving essential reason-
+cost of higher perplexity. ing capacity. Through gate-only fine-tuning on TinyLlama-
+1.1B, we demonstrated that the model can reduce average
+active depth to 76.5%, achieving a 1.31× theoretical ef-
+middle-to-late intermediate blocks, while the initial and fi- ficiency gain with minimal degradation in perplexity and
+zero-shot HellaSwag accuracy. While this study focuses
+nal layers (such as Layer 0 and Layer 21) remain robustly
+on the 1.1B parameter regime, We posit that the S-GRU’s
+active. By the critical λsparsity = 0.5 threshold, this be- efficiency will scale with model depth; in vastly deeper
+havior culminates in a “survivor” architecture: the overall hierarchies like Llama-3-70B, the unit can likely iden-
+mean gate activation collapses to 0.76, yet the gates consis- tify and bypass the high volume of redundant, incremen-
+tently sustain higher coefficients for the deep residual units. tal transformations inherent in over-parameterized residual
+This indicates that the S-GRU identifies the final stages of stacks. Our empirical analysis reveals a structured layer-
+the transformer as the most critical for reconciling high- importance hierarchy, where early and late blocks remain
+level semantic representations before the language model- critical while intermediate layers are selectively suppressed
+ing head. In the extreme λsparsity = 1.0 regime, even under sparsity pressure. These results validate that learned
+these anchors begin to fade, suggesting that the model has residual gating provides a practical and stable pathway to-
+reached its absolute structural limit, operating effectively as ward energy-aware Transformer inference without requir-
+ing full model retraining or specialized neuromorphic hard-
+a shallow feature extractor rather than a deep reasoning en-
+ware.
+gine.
+References
+Limitations and Future Work. Despite the promising [1] Damai Dai, Chengqi Deng, Chenggang Zhao, RX Xu,
+theoretical efficiency of the S-GRU, several limitations re- Huazuo Gao, Deli Chen, Jiashi Li, Wangding Zeng, Xingkai
+main to be addressed in future work. While our model Yu, Yu Wu, et al. Deepseekmoe: Towards ultimate ex-
+achieves a 1.31× theoretical speedup, realizing these gains pert specialization in mixture-of-experts language models.
+on standard deep learning hardware remains a significant In Proceedings of the 62nd Annual Meeting of the Associa-
+challenge. Current GPU kernels are optimized for dense tion for Computational Linguistics (Volume 1: Long Papers),
+pages 1280–1297, 2024. 2, 6, 7
+matrix multiplications; consequently, the dynamic skipping
+[2] Sahil Rajesh Dhayalkar. Dynamic context adaptation and in-
+of individual residual units often results in negligible wall- formation flow control in transformers: Introducing the eval-
+clock time savings due to kernel launch overheads and the uator adjuster unit and gated residual connections. arXiv
+lack of hardware-level support for conditional branching in preprint arXiv:2405.13407, 2024. 3
+massive parallel arrays. To bridge this gap, future research [3] Congpeng Du, Qi Wen, Zhiqiang Wei, and Hao Zhang. En-
+should focus on deploying the developed design on special- ergy efficient spike transformer accelerator at the edge. In-
+ized CUDA kernels or hardware-aware compilers that can telligent Marine Technology and Systems, 2(1):24, 2024. 1
+
+3476
+[4] Yuetong Fang, Ziqing Wang, Lingfeng Zhang, Jiahang Cao, [17] Yijin Liu, Fandong Meng, and Jie Zhou. Accelerating infer-
+Honglei Chen, and Renjing Xu. Spiking wavelet transformer. ence in large language models with a unified layer skipping
+In European conference on computer vision, pages 19–37. strategy. arXiv preprint arXiv:2404.06954, 2024. 2
+Springer, 2024. 2 [18] Xuan Luo, Weizhi Wang, and Xifeng Yan. Adap-
+[5] Maoxu Gao, Zhixing Hou, Di Zhu, and Chio-In Ieong. An tive layer-skipping in pre-trained llms. arXiv preprint
+accuracy-improved low-computational-cost spiking trans- arXiv:2503.23798, 2025. 2
+former network for robotic arm manipulation. In 2025 IEEE [19] Dheemanth Manur. Adaptive skip for efficient llm inference.
+International Conference on Integrated Circuits, Technolo- Master’s thesis, University of California, Riverside, 2025. 3
+gies and Applications (ICTA), pages 294–295. IEEE, 2025. [20] Yu Pan, Zeyong Su, Ao Liu, Wang Jingquan, Nannan Li, and
+2 Zenglin Xu. A unified weight initialization paradigm for ten-
+[6] Max Hartman, Vidhata Jayaraman, Moulik Choraria, Akhil sorial convolutional neural networks. In International con-
+Bhimaraju, and Lav R Varshney. Skip-it? theoretical con- ference on machine learning, pages 17238–17257. PMLR,
+ditions for layer skipping in vision-language models. arXiv 2022. 4
+preprint arXiv:2509.25584, 2025. 3 [21] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy
+[7] Zhuomin He, Yizhen Yao, Pengfei Zuo, Bin Gao, Qinya Li, Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outra-
+Zhenzhe Zheng, and Fan Wu. Adaskip: Adaptive sublayer geously large neural networks: The sparsely-gated mixture-
+skipping for accelerating long-context llm inference. In Pro- of-experts layer. arXiv preprint arXiv:1701.06538, 2017. 2
+ceedings of the AAAI Conference on Artificial Intelligence, [22] Xinyu Shi, Zecheng Hao, and Zhaofei Yu. Spikingresformer:
+pages 24050–24058, 2025. 2 Bridging resnet and vision transformer in spiking neural net-
+[8] Ahmed Heakl, Martin Gubri, Salman Khan, Sangdoo Yun, works. In Proceedings of the IEEE/CVF conference on
+and Seong Joon Oh. Dr. llm: Dynamic layer routing in llms. computer vision and pattern recognition, pages 5610–5619,
+arXiv preprint arXiv:2510.12773, 2025. 1, 2 2024. 2
+[9] Zihan Huang, Xinyu Shi, Zecheng Hao, Tong Bu, Jian- [23] Ziqing Wang, Yuetong Fang, Jiahang Cao, Qiang Zhang,
+hao Ding, Zhaofei Yu, and Tiejun Huang. Towards high- Zhongrui Wang, and Renjing Xu. Masked spiking trans-
+performance spiking transformers from ann to snn conver- former. In Proceedings of the IEEE/CVF international con-
+sion. In Proceedings of the 32nd ACM international confer- ference on computer vision, pages 1761–1771, 2023. 2
+ence on multimedia, pages 10688–10697, 2024. 2 [24] Xingrun Xing, Boyan Gao, Zheng Zhang, David A
+Clifton, Shitao Xiao, Li Du, Guoqi Li, and Jiajun Zhang.
+[10] Binyuan Hui, Jian Yang, Zeyu Cui, Jiaxi Yang, Dayiheng
+Spikellm: Scaling up spiking neural network to large lan-
+Liu, Lei Zhang, Tianyu Liu, Jiajun Zhang, Bowen Yu, Kem-
+guage models via saliency-based spiking. arXiv preprint
+ing Lu, et al. Qwen2. 5-coder technical report. arXiv preprint
+arXiv:2407.04752, 2024. 2
+arXiv:2409.12186, 2024. 2, 6, 7
+[25] Han Xu, Xuerui Qiu, Yunhui Xu, Mohammed E Elbtity,
+[11] Phu Khanh Huynh, M Lakshmi Varshika, Ankita Paul, Murat
+Peng Zhou, Yang Tian, Rui-Jie Zhu, Jiahong Zhang,
+Isik, Adarsha Balaji, and Anup Das. Implementing spiking
+Shaowei Gu, Yuqi Pan, et al. Neuromorphic spike-based
+neural networks on neuromorphic architectures: A review.
+large language model. National Science Review, 13(4):
+arXiv preprint arXiv:2202.08897, 2022. 1
+nwaf551, 2026. 1, 2
+[12] Mojan Javaheripi, Sébastien Bubeck, Marah Abdin, Jy- [26] Zhanglu Yan, Kaiwen Tang, Zixuan Zhu, Zhenyu Bai, Qian-
+oti Aneja, Sebastien Bubeck, Caio César Teodoro Mendes, hui Liu, and Weng-Fai Wong. Matterhorn: Efficient analog
+Weizhu Chen, Allie Del Giorno, Ronen Eldan, Sivakanth sparse spiking transformer architecture with masked time-
+Gopi, et al. Phi-2: The surprising power of small language to-first-spike encoding. arXiv preprint arXiv:2601.22876,
+models. Microsoft Research Blog, 1(3):3, 2023. 2, 6, 7 2026. 1
+[13] Zhenya Ji and Ming Jiang. A systematic review of electricity [27] Ning Yang, Fangxin Liu, Junjie Wang, Tao Yang, Kan Liu,
+demand for large language models: evaluations, challenges, Haibing Guan, and Li Jiang. Dash: Input-aware dynamic
+and solutions. Renewable and Sustainable Energy Reviews, layer skipping for efficient llm inference with markov deci-
+225:116159, 2026. 1 sion policies. arXiv preprint arXiv:2505.17420, 2025. 3
+[14] Filipe Laitenberger, Dawid Kopiczko, Cees GM Snoek, [28] Man Yao, Jiakui Hu, Zhaokun Zhou, Li Yuan, Yonghong
+and Yuki M Asano. What layers when: Learning to Tian, Bo Xu, and Guoqi Li. Spike-driven transformer. Ad-
+skip compute in llms with residual gates. arXiv preprint vances in neural information processing systems, 36:64043–
+arXiv:2510.13876, 2025. 3 64058, 2023. 1, 2
+[15] Donghyun Lee, Yuhang Li, Youngeun Kim, Shiting Xiao, [29] Man Yao, JiaKui Hu, Tianxiang Hu, Yifan Xu, Zhaokun
+and Priyadarshini Panda. Spiking transformer with spatial- Zhou, Yonghong Tian, Bo Xu, and Guoqi Li. Spike-driven
+temporal attention. In Proceedings of the IEEE/CVF Con- transformer v2: Meta spiking neural network architecture
+ference on Computer Vision and Pattern Recognition, pages inspiring the design of next-generation neuromorphic chips.
+13948–13958, 2025. 2 arXiv preprint arXiv:2404.03663, 2024. 1
+[16] Yudong Li, Yunlin Lei, and Xu Yang. Spikeformer: Training [30] Jiqing Zhang, Bo Dong, Haiwei Zhang, Jianchuan Ding, Fe-
+high-performance spiking neural network with transformer. lix Heide, Baocai Yin, and Xin Yang. Spiking transform-
+Neurocomputing, 574:127279, 2024. 2 ers for event-based single object tracking. In Proceedings of
+
+3477
+the IEEE/CVF conference on Computer Vision and Pattern
+Recognition, pages 8801–8810, 2022. 2
+[31] Peiyuan Zhang, Guangtao Zeng, Tianduo Wang, and Wei Lu.
+Tinyllama: An open-source small language model. arXiv
+preprint arXiv:2401.02385, 2024. 2, 6, 7
+[32] Chenlin Zhou, Liutao Yu, Zhaokun Zhou, Zhengyu Ma, Han
+Zhang, Huihui Zhou, and Yonghong Tian. Spikingformer:
+Spike-driven residual learning for transformer-based spiking
+neural network. arXiv preprint arXiv:2304.11954, 2023. 2
+[33] Zhaokun Zhou, Yuesheng Zhu, Chao He, Yaowei Wang,
+Shuicheng Yan, Yonghong Tian, and Li Yuan. Spikformer:
+When spiking neural network meets transformer. arXiv
+preprint arXiv:2209.15425, 2022. 2
+[34] Zhaokun Zhou, Yijie Lu, Yanhao Jia, Kaiwei Che, Jun
+Niu, Liwei Huang, Xinyu Shi, Yuesheng Zhu, Guoqi Li,
+Zhaofei Yu, et al. Spiking transformer with experts mix-
+ture. Advances in Neural Information Processing Systems,
+37:10036–10059, 2024. 2
+[35] Zihan Zhou, Simon Kurz, and Zhixue Zhao. Revisiting prun-
+ing vs quantization for small language models. Findings
+of the Association for Computational Linguistics: EMNLP,
+2025:12055–12070, 2025. 7
+
+3478

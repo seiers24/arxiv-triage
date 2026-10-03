@@ -112,6 +112,7 @@ class ReviewPaper(ContractModel):
 class ReviewerRubric(ContractModel):
     component: Text
     skill_hash: Sha256 | None
+    checks: list[Text]
 
 
 class ClaimReviewRef(ContractModel):

@@ -1,0 +1,194 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0011-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-arxiv-2605.28067",
+  "source_document_id": "src-2402869141fc1330",
+  "input_hash": "efcd117422a83a1885d1031408072583abff6e45421439288153c95e74afc1bf",
+  "problem": "Modern diffusion-based image editing is often too large and computationally costly for private on-device use, while high-quality task-specific paired data can be scarce.",
+  "method": "BlazeEdit uses a compact pure image-to-image latent-diffusion architecture, masked-reconstruction pretraining, mask-valued multi-task conditioning, joint finetuning, and adversarial distribution-matching distillation for two-step mobile inference.",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_kind": "problem",
+      "text": "The paper motivates on-device editing by stating that modern diffusion models' large parameter counts require costly server-side inference and can create privacy risks.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0017",
+        "start_char": 422,
+        "end_char": 641,
+        "quote": "The remarkable generation quality of modern diffusion models often comes at the cost of massive parameter counts, which necessitate server-side inference with significant computational costs and potential privacy risks."
+      },
+      "evidence_modality": "qualitative",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-002",
+      "claim_kind": "contribution",
+      "text": "BlazeEdit removes text-conditioning components and combines object removal, outpainting, tone correction, relighting, and sticker generation in a 195M-parameter image-to-image model.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0017",
+        "start_char": 1007,
+        "end_char": 1334,
+        "quote": "By identifying that many practical image editing tasks do not require text-based guidance, we eliminate the text-conditioning components and develop a multi-task architecture that consolidates object removal, outpainting, tone correction, relighting, and sticker generation into a single, compact model of only 195M parameters."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-003",
+      "claim_kind": "method",
+      "text": "The training pipeline first pretrains an image-to-image base model on large-scale task-agnostic image data, then jointly finetunes it on task-specific datasets.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0039",
+        "start_char": 9389,
+        "end_char": 9676,
+        "quote": "To achieve data-efficient scaling across diverse editing tasks while maintaining a compact model footprint, we propose to first pretrain an image-to-image base model from scratch on large-scale task-agnostic datasets, and then finetune it jointly on all available task-specific datasets."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-004",
+      "claim_kind": "method",
+      "text": "A task-specific numerical constant scales the binary mask so the model can switch among task modes without extra parameters.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0045",
+        "start_char": 11319,
+        "end_char": 11578,
+        "quote": "Specifically, each task i i is assigned a unique numerical constant τ i \\tau_{i} , which is used to scale the binary mask 𝐦 \\mathbf{m} . This mask-based conditioning signal allows the model to switch functional modes dynamically without additional parameters."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-005",
+      "claim_kind": "method",
+      "text": "After supervised finetuning, the model is distilled for two-step inference to reduce latency.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0047",
+        "start_char": 12008,
+        "end_char": 12121,
+        "quote": "After supervised finetuning, we distill the resulting model for 2-step inference, significantly reducing latency."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-006",
+      "claim_kind": "method",
+      "text": "The U-ViT denoiser uses ResNet blocks at high resolutions for spatial bias and memory savings, and self-attention at low resolutions for long-range dependencies and accelerator utilization.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0036",
+        "start_char": 7934,
+        "end_char": 8241,
+        "quote": "The denoiser follows the U-ViT architecture  [ 10 ] . Specifically, we employ ResNet  [ 8 ] blocks at higher resolutions to maintain the spatial inductive bias while saving memory, and self-attention  [ 23 ] blocks at lower resolutions to capture long-range dependencies and improve accelerator utilization."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-007",
+      "claim_kind": "result",
+      "text": "The pruned decoder has 6M parameters and is reported to show minimal reconstruction-quality degradation.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0036",
+        "start_char": 8242,
+        "end_char": 8585,
+        "quote": "To further reduce model size and inference latency, we prune the width and depth of the decoder 𝒿 \\mathcal{D} . We then train it for image reconstruction with the encoder ℰ \\mathcal{E} frozen, following MobileDiffusion  [ 32 ] . The resulting lightweight decoder has only 6M parameters, and shows minimal degradation in reconstruction quality."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-008",
+      "claim_kind": "method",
+      "text": "Object-removal finetuning uses an approximately 20K-pair manually curated dataset.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0051",
+        "start_char": 12569,
+        "end_char": 12629,
+        "quote": "We use a manually curated dataset of ∼ \\sim 20K image pairs."
+      },
+      "evidence_modality": "observational",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-009",
+      "claim_kind": "method",
+      "text": "Tone-correction finetuning uses an approximately 3M-pair synthetic dataset generated by a high-performance teacher model.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0053",
+        "start_char": 13098,
+        "end_char": 13183,
+        "quote": "We synthesize a dataset of ∼ \\sim 3M image pairs by a high-performance teacher model."
+      },
+      "evidence_modality": "simulation",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-010",
+      "claim_kind": "result",
+      "text": "The paper reports a 2× reduction in denoiser parameters and removal of text encoders that prior systems typically size between 0.1B and 2B parameters.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0058",
+        "start_char": 14245,
+        "end_char": 14399,
+        "quote": "BlazeEdit achieves 2 × \\times reduction in denoiser parameter count while eliminating the text encoders, which typically range from 0.1B to 2B parameters."
+      },
+      "evidence_modality": "observational",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-011",
+      "claim_kind": "result",
+      "text": "A full inference pass is reported to take 290 ms on a Pixel 10 using its Edge TPU.",
+      "source_locator": {
+        "document_sha256": "db7816f40d2c11438f84a74c210cabf544ffb6be54f679eeb62e55753396942e",
+        "section_id": "sec-0058",
+        "start_char": 14400,
+        "end_char": 14631,
+        "quote": "Furthermore, Table  2 provides a breakdown of inference latency on Pixel 10 using Edge TPU. BlazeEdit completes a full inference pass in just 290ms, enabling lightning-fast and privacy-preserving image editing directly on the edge."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": [
+    "The normalized HTML source references Tables 1 and 2 but does not include their contents, so detailed baseline values and the latency breakdown could not be extracted.",
+    "The supplied source reports no explicit power, energy, memory, or throughput measurements and contains no paper-stated limitations section."
+  ]
+}

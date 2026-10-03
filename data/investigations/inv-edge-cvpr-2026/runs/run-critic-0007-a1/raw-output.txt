@@ -1,0 +1,123 @@
+{
+  "schema_version": "2.0",
+  "role": "critic",
+  "job_type": "paper_critique",
+  "agent_run_id": "run-critic-0007-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-679ce45efa938ab4",
+  "reader_run_id": "run-reader-0007-a1",
+  "input_hash": "e91b0d1c6a909ccc03e7dcd40ef32326a6a0e5d694e9f340f449664863f36685",
+  "verdicts": [
+    {
+      "claim_id": "claim-0001",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The quoted source directly states that compute and memory constraints impede real-time, on-device LLM operation."
+    },
+    {
+      "claim_id": "claim-0002",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source explicitly describes the framework as lightweight, backpropagation-free, surrogate-based, and designed to locate quantization-susceptible hybrid components."
+    },
+    {
+      "claim_id": "claim-0003",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The method section explicitly starts with a trained model and modified inference passes over a representative dataset."
+    },
+    {
+      "claim_id": "claim-0004",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The cited analytical passage presents KL divergence as an upper-bound proxy for perplexity and uses that relationship to motivate its selection as the sensitivity metric."
+    },
+    {
+      "claim_id": "claim-0005",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The reported correlation analysis gives average Kendall tau values of 0.79 for student-to-teacher KL and 0.76 for SQNR across the evaluated hybrid SSM models."
+    },
+    {
+      "claim_id": "claim-0006",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Section 7.1 directly identifies the Lunar Lake CPU/GPU hardware, OpenVINO/XAMBA path, latency mode, 100-iteration setting, models, baselines, and reported metrics, although the appendix gives a different minimum-iteration benchmark recipe."
+    },
+    {
+      "claim_id": "claim-0007",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The CPU profiling section reports both stated size reductions and says they match Uniform INT4 at the most aggressive setting."
+    },
+    {
+      "claim_id": "claim-0008",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source reports the two p05 throughput comparisons, near-FP16 perplexity, and the Mamba-1.4B latency comparison against Uniform INT8 and INT4 exactly as bounded in the claim."
+    },
+    {
+      "claim_id": "claim-0009",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The GPU profiling discussion attributes negligible size savings to the FP16 export default, INT8-only GPU path, and dominant embedding table, and locates gains in measured latency and throughput."
+    },
+    {
+      "claim_id": "claim-0010",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The Lunar Lake GPU results report the 60,006 ms FP16 and 3,417 ms p02 latencies and the stated perplexity ranges and Uniform INT8 endpoint."
+    },
+    {
+      "claim_id": "claim-0011",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The appendix directly reports the eight-point cap and the oneDNN primitive-descriptor failure for the excluded XAMBA CumBA MatMul node under higher-compression INT8 context."
+    }
+  ],
+  "objective_assessments": [
+    {
+      "criterion_id": "workshop_fit",
+      "score": 5,
+      "reason": "Supported claims cover a central forward-only mixed-precision method, physical edge-client profiling, substantial compression, and measured latency/throughput-quality tradeoffs, directly addressing several core EDGE topics.",
+      "evidence_claim_ids": ["claim-0002", "claim-0005", "claim-0006", "claim-0007", "claim-0008", "claim-0009", "claim-0010"],
+      "assumptions": ["Mixed-precision quantization and physical edge-client profiling count as efficient inference and deployment topics under the supplied workshop definition."],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "evidence_strength",
+      "score": 4,
+      "reason": "The evidence includes a correlation study, tensor-level ablations, three model/platform paths, named fixed-precision baselines, multiple efficiency and quality metrics, and a reproducibility guide; it remains bounded to one hardware platform and a narrow language-model evaluation, with inconsistent iteration descriptions.",
+      "evidence_claim_ids": ["claim-0003", "claim-0005", "claim-0006", "claim-0007", "claim-0008", "claim-0009", "claim-0010", "claim-0011"],
+      "assumptions": ["The evaluated CPU and GPU model paths constitute multiple meaningful settings, while a single platform and WikiText-2 do not establish representative breadth."],
+      "uncertain": true
+    },
+    {
+      "criterion_id": "efficiency_result",
+      "score": 4,
+      "reason": "Supported physical-device results show compression and latency/throughput improvements across CPU and GPU model paths against FP16 and uniform-precision baselines while reporting perplexity tradeoffs; breadth is limited to one device family and one quality dataset.",
+      "evidence_claim_ids": ["claim-0006", "claim-0007", "claim-0008", "claim-0009", "claim-0010"],
+      "assumptions": ["Different model scales and CPU/GPU execution paths count as multiple meaningful workloads or conditions, but not as representative deployment coverage."],
+      "uncertain": true
+    },
+    {
+      "criterion_id": "deployment_realism",
+      "score": 4,
+      "reason": "The paper reports end-to-end measurements on a physical Intel Lunar Lake edge-client platform for multiple models on CPU and GPU, but only one platform is covered and no energy or thermal measurements are supplied.",
+      "evidence_claim_ids": ["claim-0006", "claim-0008", "claim-0009", "claim-0010", "claim-0011"],
+      "assumptions": ["CPU and GPU profiling of multiple Mamba-family models on one physical edge-client platform satisfies the anchor's multiple-workload or multiple-condition branch."],
+      "uncertain": true
+    },
+    {
+      "criterion_id": "extension_leverage",
+      "score": 4,
+      "reason": "The supported GPU constraints and runtime failure expose a concrete extension: test alternative export and kernel support that enables INT4 GPU mixed precision, measuring size, latency, throughput, perplexity, and failure-free operation against the existing baselines.",
+      "evidence_claim_ids": ["claim-0006", "claim-0009", "claim-0010", "claim-0011"],
+      "assumptions": ["Access to an alternative GPU quantization/export implementation is feasible but is not established by the paper.", "Removing the reported INT4 and primitive-descriptor constraints could improve the GPU memory-quality tradeoff, but that expected benefit is inferential."],
+      "uncertain": true
+    }
+  ],
+  "human_review_reasons": [
+    "The frozen source gives inconsistent benchmark iteration conditions: Section 7.1 states 100 iterations, while Appendix A specifies at least 60 seconds and at least 50 iterations; this material reproducibility detail cannot be fully reconciled."
+  ]
+}

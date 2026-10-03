@@ -1,0 +1,271 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0010-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-openreview-edge-diffusion",
+  "source_document_id": "src-a71bfb5ec0c1ad18",
+  "input_hash": "7ccbd061d57fc6eeecbe5eba48f326b676cb3560dc3520b80eb8cec45063eede",
+  "problem": "The paper addresses the tension between effective visual privacy protection and computational efficiency for real-time anonymization on resource-constrained edge devices.",
+  "method": "EdgeDiffusion combines PII detection, a distilled and quantized few-step diffusion backbone, category-aware anonymization, and adaptive fidelity control for faces, scene text, and license plates under device latency constraints.",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_kind": "problem",
+      "text": "Visual anonymization for surveillance must be effective and computationally efficient on resource-constrained edge devices.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 254,
+        "end_char": 516,
+        "quote": "Protecting visual privacy in surveillance systems requires\n\nPrivacy Accuracy (%)\n001 DeepPrivacy2\n002 anonymization methods that are both effective and compu- CIAGAN\n003 tationally efficient, especially when deployed on resource- 80\n004 constrained edge devices."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-002",
+      "claim_kind": "method",
+      "text": "The framework comprises PII detection, latency-optimized diffusion anonymization, and category-aware control for different PII categories.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 11151,
+        "end_char": 11415,
+        "quote": "Figure 2. EdgeDiffusion framework for real-time visual anonymization. It consists of three stages: PII detection, latency-optimized\ndiffusion-based anonymization, and category-aware control modules that regulate anonymization fidelity for different PII categories."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-003",
+      "claim_kind": "method",
+      "text": "The latency-optimized backbone progressively distills a diffusion trajectory of about 1,000 steps into 4 to 8 steps.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 12018,
+        "end_char": 12178,
+        "quote": "progressively distill the full diffusion trajectory (S ∼ 1000) 191\n164 gression, and mask prediction losses. into a significantly shorter process (S = 4−8). 192"
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-004",
+      "claim_kind": "method",
+      "text": "The backbone prunes channels and uses 8-bit quantization, which the paper states reduces memory footprint by 2.4 times.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 12663,
+        "end_char": 12792,
+        "quote": "channels and apply 8-bit quantization, resulting in a 2.4× 197\nFθ (xt ), t mod k = 0,\n169 Rt = (4) reduction in memory footprint."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-005",
+      "claim_kind": "method",
+      "text": "The adaptive fidelity controller varies injected noise, denoising-step count, mask expansion, and backbone compression according to device load.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 17785,
+        "end_char": 18189,
+        "quote": "through two mechanisms: (1) adjusting the injected noise 280\n242 fusion backbone across all categories. Adapters are applied magnitude and the effective number of denoising steps; and 281\n243 at three spatial scales (16, 32, and 64 feature maps) using (2) varying mask expansion and backbone compression de- 282\n244 depthwise separable convolutions to reduce computational pending on current device load."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-006",
+      "claim_kind": "result",
+      "text": "The experiments include COCO-Privacy, Cityscapes-Privacy, and VIRAT-Privacy.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 2063,
+        "end_char": 2215,
+        "quote": "Experiments on COCO-Privacy, scale data breaches illustrate how easily exposed visual in- 040\n022 Cityscapes-Privacy, and VIRAT-Privacy show that EdgeD-"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-007",
+      "claim_kind": "result",
+      "text": "Runtime and peak-memory metrics were averaged from direct on-device measurements over 1,000 test frames at 640 by 480 resolution.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 21629,
+        "end_char": 21918,
+        "quote": "formance metrics are reported as average wall-clock latency 313\n305 sensitive regions. We adopt a consistent 70/10/20 and peak memory usage measured directly on-device over 314\n306 (train/val/test) split with category-balanced sampling to fa- 1,000 test frames at 640 × 480 resolution. 315"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-008",
+      "claim_kind": "result",
+      "text": "On COCO-Privacy face/full-body anonymization, EdgeDiffusion reports 97.0% Privacy Accuracy, 0.94 SSIM, 0.10 LPIPS, and 66.0% detection mAP, exceeding the listed baselines in those metrics.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 21071,
+        "end_char": 21570,
+        "quote": "Table 2. Face/Full-Body anonymization on COCO-Privacy. PA denotes Privacy Accuracy (higher is better), measuring the reduction of\nsuccessful re-identification after anonymization.\nMethod PA (↑ %) SSIM (↑) LPIPS (↓) Detection mAP (↑ %) Latency (↓ ms) Memory (↓ MB)\nPixelation 55.0 0.81 0.21 52.0 10 80\nGaussian Blur 60.0 0.84 0.19 55.0 12 80\nCIAGAN (CVPR 2020) 85.0 0.90 0.15 62.0 150 420\nDeepPrivacy2 (WACV 2023) 88.0 0.92 0.13 64.0 3600 550\nEdgeDiffusion (Face/Full-Body) 97.0 0.94 0.10 66.0 47 310"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-009",
+      "claim_kind": "result",
+      "text": "For COCO-Privacy scene-text removal, EdgeDiffusion reports PSNR 35.0, SSIM 0.92, LPIPS 0.12, and a 3.0 percentage-point detection-mAP drop, outperforming the listed baselines on those metrics.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 22595,
+        "end_char": 23120,
+        "quote": "Table 3. Scene text removal performance on COCO-Privacy. Detection mAP ∆ denotes the performance drop (percentage points)\nrelative to the original images; lower values indicate better preservation of downstream detection performance.\nMethod PSNR (↑) SSIM (↑) LPIPS (↓) Detection mAP ∆ (pp) (↓) Latency (↓ ms) Memory (↓ MB)\nBaseline (EAST + Inpainting) 30.0 0.85 0.20 10.0 80 100\nGaRNet (ECCV 2022) [10] 32.5 0.88 0.17 7.0 200 300\nPERT (WACV 2023) [21] 33.5 0.90 0.15 5.0 250 350\nEdgeDiffusion (Text) 35.0 0.92 0.12 3.0 50 310"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-010",
+      "claim_kind": "result",
+      "text": "For Cityscapes-Privacy license-plate anonymization, EdgeDiffusion reports 45.0% post-anonymization readability, 0.10 LPIPS, and a 3.0 percentage-point detection-mAP drop, improving on the listed baselines.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 23122,
+        "end_char": 23573,
+        "quote": "Table 4. License plate anonymization on Cityscapes-Privacy. LP readability denotes the recognition accuracy of license plates after\nanonymization (lower is better). Detection mAP ∆ indicates the performance drop (percentage points) relative to the original images.\nMethod LP Readability (↓ %) LPIPS (↓) Detection mAP ∆ (pp) (↓) Latency (↓ ms)\nBlur (Gaussian) 75.0 0.18 8.0 10\ndashcam anonymizer 60.0 0.15 5.0 120\nEdgeDiffusion (Plate) 45.0 0.10 3.0 47"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-011",
+      "claim_kind": "result",
+      "text": "At 640 by 480 resolution, EdgeDiffusion reports 47 ms, 21.3 FPS, and 310 MB peak memory on Jetson Orin Nano, and 55 ms, 18.2 FPS, and 320 MB on Snapdragon 8 Gen 2.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 28055,
+        "end_char": 28595,
+        "quote": "Table 5. End-to-end efficiency on edge devices (640×480 resolution). Latency, throughput (FPS), and peak memory usage are reported\nfor two representative edge platforms. Best results are shown in bold.\nJetson Orin Nano Snapdragon 8 Gen 2\nMethod\nLatency (↓ ms) FPS (↑) Peak Memory (↓ MB) Latency (↓ ms) FPS (↑) Peak Memory (↓ MB)\nCIAGAN 150 6.7 420 180 5.6 430\nDeepPrivacy2 3600 0.3 550 4000 0.25 600\nGaRNet 200 5.0 300 240 4.2 320\nPERT 250 4.0 350 300 3.3 370\ndashcam anonymizer 120 8.3 300 140 7.1 320\nEdgeDiffusion 47 21.3 310 55 18.2 320"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-012",
+      "claim_kind": "result",
+      "text": "When used before downstream perception, EdgeDiffusion reports a 1.2 percentage-point COCO detection-mAP drop and a 2.0 percentage-point Cityscapes segmentation-mIoU drop, smaller than the listed anonymization baselines.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 14976,
+        "end_char": 15914,
+        "quote": "Table 1. Utility preservation on downstream tasks. Relative per-\n217 the mask m and the category label c ∈ {face, text, plate}. formance drop (percentage points, ↓) in detection mAP on COCO\n218 Category information is encoded as a one-hot vector and and segmentation mIoU on Cityscapes after anonymization.\n219 projected through a learnable embedding layer, which is in- Method COCO mAP (↓ pp) Cityscapes mIoU (↓ pp)\n220 jected into the U-Net backbone via lightweight adapters Ac No Anonymization 40.0 (0.0) 74.0 (0.0)\n221 inserted at multiple resolution scales (encoder, bottleneck, Pixelation 34.5 (5.5) 68.5 (5.5)\n222 and decoder). These adapters are implemented as low-rank Gaussian Blur 35.5 (4.5) 69.5 (4.5)\nCIAGAN 37.8 (2.2) 71.2 (2.8)\n223 bottleneck layers with FiLM-style modulation (feature-wise DeepPrivacy2 38.3 (1.7) 71.6 (2.4)\n224 linear modulation), where scaling and shifting parameters EdgeDiffusion 38.8 (1.2) 72.0 (2.0)"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-013",
+      "claim_kind": "result",
+      "text": "On the COCO-Privacy ablation, removing adaptive fidelity control lowers Privacy Accuracy from 97.0% to 93.0% and raises LPIPS from 0.098 to 0.11.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 31185,
+        "end_char": 31546,
+        "quote": "Table 6. Ablation Study on COCO-Privacy Test Set. Latency comparisons to the full version. Best results are in bold.\n\nVariant PA (↑ %) SSIM (↑) LPIPS (↓) Latency (↓ ms)\nFull EdgeDiffusion 97.0 0.94 0.098 47\nw/o Adaptive Fidelity Control 93.0 0.92 0.11 47\nw/o Optimized Diffusion Backbone 96.0 0.94 0.10 260\nw/o Uncertainty-Aware Mask Expansion 92.0 0.93 0.11 47"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-014",
+      "claim_kind": "result",
+      "text": "On the same ablation, replacing the optimized diffusion backbone raises latency from 47 ms to 260 ms while Privacy Accuracy changes from 97.0% to 96.0%.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 31185,
+        "end_char": 31546,
+        "quote": "Table 6. Ablation Study on COCO-Privacy Test Set. Latency comparisons to the full version. Best results are in bold.\n\nVariant PA (↑ %) SSIM (↑) LPIPS (↓) Latency (↓ ms)\nFull EdgeDiffusion 97.0 0.94 0.098 47\nw/o Adaptive Fidelity Control 93.0 0.92 0.11 47\nw/o Optimized Diffusion Backbone 96.0 0.94 0.10 260\nw/o Uncertainty-Aware Mask Expansion 92.0 0.93 0.11 47"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-015",
+      "claim_kind": "limitation",
+      "text": "All reported experiments use 640 by 480 resolution, and higher resolutions may require architectural adaptations to preserve real-time edge throughput.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 32573,
+        "end_char": 32911,
+        "quote": "First, all ex- 459\nPost-processing 3 6 periments are conducted at 640 × 480 resolution; scaling 460\nTotal 47 100 to higher resolutions may require additional architectural 461\nadaptations, such as patch-level parallel diffusion or cas- 462\ncaded generation, to maintain real-time throughput on edge 463\n432 3.9. Ablation Studies hardware."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-016",
+      "claim_kind": "limitation",
+      "text": "Robustness against adversarial reconstruction attacks that try to recover original identities was not evaluated.",
+      "source_locator": {
+        "document_sha256": "c645da6d3319cde3cf1ada06ac46af05c2f5dd4ce7a58f2baba749f6aeadabcf",
+        "section_id": "sec-0001",
+        "start_char": 32912,
+        "end_char": 33243,
+        "quote": "Second, the robustness of EdgeDiffusion against 464\nadversarial reconstruction attacks, in which an attacker at- 465\n433 We analyze the contribution of each component through tempts to reverse anonymization and recover original identi- 466\n434 controlled ablations on COCO-Privacy (Table 6). Disabling ties, has not been evaluated."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": []
+}

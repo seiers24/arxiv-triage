@@ -216,6 +216,51 @@ string or arbitrary object.
 
 * **Date made:** 2026-09-13
 
+## Workshop overlays stay inside shared contracts
+
+* **Decision, stated simply:**
+The workshop component reuses the shared reader, critic, reviewer, corpus, and
+paper-state contracts. Workshop reader needs are ordered focus questions in
+`ReaderFocus`; critic and reviewer needs are ordered `checks` embedded in their
+self-hashed rubrics. A component skill hash records exact provenance but never
+stands in for instructions a tool-free worker must receive.
+
+Workshop acquisition accounting contains only `declared`, `extracted`,
+`resolved`, and `identity_unresolved`. Shared Core accounting remains the sole
+source for complete, analysis-unresolved, and failed outcomes.
+
+The EDGE objective has five paper-local anchored dimensions. Corpus
+distinctiveness remains a qualitative reviewer inference because a per-paper
+critic does not see the corpus. A separate self-hashed workshop ranking policy
+defines explicit top-tier thresholds and selects every qualifying paper; it
+never fills a fixed top-k. The complete validated policy is embedded in the
+ranking artifact supplied to the reviewer. Its hash alone is insufficient
+because a tool-free reviewer cannot reproduce threshold decisions from a hash.
+
+* **Why it was chosen:**
+This keeps the contract surface small, gives workers the actual bounded
+instructions they need, avoids duplicated lifecycle counts, and preserves a
+deterministic definition of the top tier.
+
+* **Alternatives considered:**
+- Add workshop-specific reader result collections. Rejected because the shared
+  claims collection already carries evidence, modality, environment, and
+  provenance.
+- Put corpus distinctiveness into every per-paper critic score. Rejected
+  because the critic cannot make a corpus-wide judgment from one paper.
+- Duplicate analysis counts in `WorkshopCorpusManifest`. Rejected because they
+  would compete with the shared corpus and paper-state artifacts.
+- Choose a fixed number of winners. Rejected because it would promote papers
+  that do not meet the declared evidence thresholds.
+
+* **Tradeoffs:**
+Distinctiveness is reported qualitatively rather than added to the numeric
+score, and task payloads grow by the exact component checks. Threshold changes
+require a new policy hash and results from different objective or policy hashes
+must not be compared as though they used one scale.
+
+* **Date made:** 2026-09-14
+
 ## Invalid is terminal for a physical agent run
 
 * **Decision, stated simply:**
@@ -320,3 +365,61 @@ and analysis outcome remain separate concepts in artifacts, storage, and
 reports.
 
 * **Date made:** 2026-09-12
+
+## Closed and atomic screening over frozen candidates
+
+* **Decision, stated simply:**
+Semantic screening receives a closed, self-hashed `ScreeningScope`, the
+objective profile, and an ordered batch from an immutable `CandidateSet`.
+Candidate abstracts may be null. Evidence spans identify either the title or
+abstract and must reconstruct exactly from Python Unicode code-point offsets.
+
+Every frozen candidate in semantic-screening mode receives exactly one
+decision: `selected`, `screened_out`, or `needs_review`. Selected and
+needs-review candidates are included for analysis; screened-out candidates are
+excluded. A deterministic external identity failure may override that route to
+`membership_unresolved` without erasing the screening decision.
+
+Screening batches have stable `screening_batch_id` values and are atomic
+logical jobs. An invalid partial response is not salvaged. The existing maximum
+of two physical attempts and transport/schema-only retry policy applies. If a
+batch exhausts its attempts, independent in-flight batches finish and the
+investigation fails; the workflow never fabricates a missing decision.
+
+Discovery must satisfy the active completion rule before candidates freeze.
+The first slice has no processing-cap disposition or deterministic hard-
+exclusion shortcut: every frozen semantic candidate is screened. A component
+with authoritative workshop membership may explicitly bypass semantic
+screening and include its complete listed population. Open discovery may not
+use that bypass.
+
+The lifecycle adds `candidates_frozen` and `screening`; physical run metadata
+adds nullable `screening_batch_id`; the artifact schema remains `2.0` because
+the screening objects are new and the changed execution metadata is not
+self-hashed. The caller-selected SQLite projection is rebuilt at its new index
+schema version rather than migrated in place.
+
+* **Why it was chosen:**
+The objective alone does not contain inclusion and exclusion boundaries, while
+passing the component-owned `SearchPlan` would expose arbitrary configuration
+to the worker. A small `ScreeningScope` supplies exactly the semantic boundary
+the worker needs. Frozen candidates, ordered batches, atomic validation, and a
+global coverage barrier make omissions and substitutions detectable.
+
+* **Alternatives considered:**
+- Screen from the objective alone. Rejected because assessment criteria do not
+  define the search plan's exclusion boundary.
+- Salvage valid-looking rows from an invalid batch or synthesize
+  `needs_review`. Rejected because either path hides a failed physical result.
+- Screen an authoritative closed workshop list. Rejected as the default because
+  it can hide listed submissions and weakens the completeness acceptance test.
+- Add caps or hard exclusions immediately. Deferred until they have their own
+  visible dispositions or deterministic decision artifact.
+
+* **Tradeoffs:**
+Atomic batches may repeat valid decisions after one row invalidates an attempt,
+and screening all frozen candidates costs more than heuristic shortcuts. The
+design keeps those costs bounded and auditable. Authoritative membership is an
+explicit component policy, not an implicit exception.
+
+* **Date made:** 2026-09-13

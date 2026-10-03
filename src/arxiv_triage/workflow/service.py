@@ -57,11 +57,52 @@ class WorkflowService:
         return transition_investigation(current, InvestigationState.DISCOVERING)
 
     @staticmethod
-    def freeze_corpus(
-        current: InvestigationState, *, membership_valid: bool, counts_valid: bool
+    def freeze_candidates(
+        current: InvestigationState,
+        *,
+        search_completion_satisfied: bool,
+        candidate_set_valid: bool,
     ) -> InvestigationState:
+        if not search_completion_satisfied:
+            raise GuardViolation(
+                "candidate freeze requires the active search completion rule to succeed"
+            )
+        if not candidate_set_valid:
+            raise GuardViolation("candidate freeze requires a valid candidate set")
+        return transition_investigation(current, InvestigationState.CANDIDATES_FROZEN)
+
+    @staticmethod
+    def begin_screening(current: InvestigationState) -> InvestigationState:
+        return transition_investigation(current, InvestigationState.SCREENING)
+
+    @staticmethod
+    def freeze_screened_corpus(
+        current: InvestigationState,
+        *,
+        screening_coverage_valid: bool,
+        membership_valid: bool,
+        counts_valid: bool,
+    ) -> InvestigationState:
+        if not screening_coverage_valid or not membership_valid or not counts_valid:
+            raise GuardViolation(
+                "screened corpus freeze requires complete screening, membership, and counts"
+            )
+        return transition_investigation(current, InvestigationState.CORPUS_FROZEN)
+
+    @staticmethod
+    def freeze_authoritative_corpus(
+        current: InvestigationState,
+        *,
+        authoritative_membership: bool,
+        membership_valid: bool,
+        counts_valid: bool,
+    ) -> InvestigationState:
+        if not authoritative_membership:
+            raise GuardViolation("authoritative corpus bypass must be explicit")
         if not membership_valid or not counts_valid:
-            raise GuardViolation("freeze_corpus requires valid membership and counts")
+            raise GuardViolation(
+                "authoritative corpus freeze requires valid membership and counts"
+            )
         return transition_investigation(current, InvestigationState.CORPUS_FROZEN)
 
     @staticmethod

@@ -1,0 +1,193 @@
+{
+  "schema_version": "2.0",
+  "role": "critic",
+  "job_type": "paper_critique",
+  "agent_run_id": "run-critic-0010-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-openreview-edge-diffusion",
+  "reader_run_id": "run-reader-0010-a1",
+  "input_hash": "550969297fd5be32fd33bed0ab0488cb11d4111a7fdba34b17f17ec89c3a09c8",
+  "verdicts": [
+    {
+      "claim_id": "claim-001",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The quoted abstract states that surveillance anonymization requires effectiveness and computational efficiency, especially on resource-constrained edge devices."
+    },
+    {
+      "claim_id": "claim-002",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The Figure 2 caption explicitly identifies PII detection, latency-optimized diffusion anonymization, and category-aware fidelity control as the three framework stages."
+    },
+    {
+      "claim_id": "claim-003",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source explicitly describes progressive distillation from approximately 1,000 diffusion steps to 4-8 steps."
+    },
+    {
+      "claim_id": "claim-004",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source states that redundant channels are pruned, 8-bit quantization is applied, and the resulting memory-footprint reduction is 2.4 times."
+    },
+    {
+      "claim_id": "claim-005",
+      "status": "overclaimed",
+      "evidence_classification_correct": true,
+      "reason": "The source makes the controller depend jointly on user privacy preference and device latency slack, and explicitly attaches current device load to mask expansion and backbone compression; the claim attributes all four controls only to device load."
+    },
+    {
+      "claim_id": "claim-006",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The abstract names COCO-Privacy, Cityscapes-Privacy, and VIRAT-Privacy as experimental datasets."
+    },
+    {
+      "claim_id": "claim-007",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The experimental setup states that average wall-clock latency and peak memory were measured directly on-device over 1,000 frames at 640 by 480 resolution."
+    },
+    {
+      "claim_id": "claim-008",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 2 reports the stated Privacy Accuracy, SSIM, LPIPS, and detection mAP values, each better in the indicated direction than every listed baseline."
+    },
+    {
+      "claim_id": "claim-009",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 3 reports the stated PSNR, SSIM, LPIPS, and detection-mAP-drop values, each better in the indicated direction than the listed scene-text baselines."
+    },
+    {
+      "claim_id": "claim-010",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 4 reports 45.0 percent readability, 0.10 LPIPS, and a 3.0-point detection-mAP drop for EdgeDiffusion, all improved over the two listed baselines."
+    },
+    {
+      "claim_id": "claim-011",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 5 reports exactly the stated latency, throughput, and peak-memory values at 640 by 480 on Jetson Orin Nano and Snapdragon 8 Gen 2, and the setup identifies these as direct on-device measurements."
+    },
+    {
+      "claim_id": "claim-012",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 1 reports the stated 1.2-point COCO mAP drop and 2.0-point Cityscapes mIoU drop, both smaller than those of the listed anonymization baselines."
+    },
+    {
+      "claim_id": "claim-013",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 6 reports the stated Privacy Accuracy decrease from 97.0 to 93.0 percent and LPIPS increase from 0.098 to 0.11 when adaptive fidelity control is removed."
+    },
+    {
+      "claim_id": "claim-014",
+      "status": "supported",
+      "evidence_classification_correct": false,
+      "reason": "Table 6 supports the 47-to-260 ms latency change and 97.0-to-96.0 percent Privacy Accuracy change, but neither the table nor its surrounding ablation text identifies the physical device used for that latency measurement, so `real_hardware` is not tied to an exact execution environment."
+    },
+    {
+      "claim_id": "claim-015",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The limitations section states that all experiments use 640 by 480 resolution and that higher resolutions may require architectural adaptations to retain real-time edge throughput."
+    },
+    {
+      "claim_id": "claim-016",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The limitations section explicitly says robustness against attacks that reverse anonymization to recover identities has not been evaluated."
+    }
+  ],
+  "objective_assessments": [
+    {
+      "criterion_id": "workshop_fit",
+      "score": 5,
+      "reason": "The supported record covers multiple central EDGE topics: a distilled and quantized diffusion architecture, direct latency and memory measurements on two edge platforms, and application-specific on-device visual anonymization.",
+      "evidence_claim_ids": [
+        "claim-002",
+        "claim-003",
+        "claim-004",
+        "claim-007",
+        "claim-011"
+      ],
+      "assumptions": [],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "evidence_strength",
+      "score": 4,
+      "reason": "Supported evidence spans three datasets, several task-specific baseline tables, two physical edge platforms, downstream-utility measurements, and controlled component ablations; the supplied record does not establish unusually complete reproducibility or coverage beyond 640 by 480.",
+      "evidence_claim_ids": [
+        "claim-006",
+        "claim-007",
+        "claim-008",
+        "claim-009",
+        "claim-010",
+        "claim-011",
+        "claim-012",
+        "claim-013",
+        "claim-015",
+        "claim-016"
+      ],
+      "assumptions": [],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "efficiency_result",
+      "score": 4,
+      "reason": "The supported tables show consistent latency and throughput advantages against multiple named baselines on two devices, while privacy, perceptual-quality, downstream-utility, resolution, and memory tradeoffs remain visible.",
+      "evidence_claim_ids": [
+        "claim-007",
+        "claim-008",
+        "claim-009",
+        "claim-010",
+        "claim-011",
+        "claim-012",
+        "claim-013",
+        "claim-015"
+      ],
+      "assumptions": [],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "deployment_realism",
+      "score": 4,
+      "reason": "The source reports direct on-device latency and peak-memory measurements over 1,000 frames on both an embedded GPU platform and a mobile SoC at a stated resolution; energy, thermal behavior, and higher-resolution operation are not measured.",
+      "evidence_claim_ids": [
+        "claim-007",
+        "claim-011",
+        "claim-015"
+      ],
+      "assumptions": [],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "extension_leverage",
+      "score": 3,
+      "reason": "A concrete next experiment is to test the paper's suggested higher-resolution architectural adaptations on the same two edge platforms while retaining the reported privacy, quality, latency, and memory comparisons; adversarial reconstruction testing supplies a second bounded direction.",
+      "evidence_claim_ids": [
+        "claim-007",
+        "claim-008",
+        "claim-011",
+        "claim-015",
+        "claim-016"
+      ],
+      "assumptions": [
+        "The suggested patch-level parallel or cascaded variants can be implemented on the reported devices.",
+        "The reported privacy, perceptual-quality, latency, and memory metrics can be reused to compare higher-resolution variants.",
+        "A suitable adversarial reconstruction protocol can be specified even though the source does not provide one."
+      ],
+      "uncertain": true
+    }
+  ],
+  "human_review_reasons": [
+    "The ablation latency in claim-014 is labeled as real-hardware evidence, but the source does not identify the physical device for Table 6; the matching 47 ms value suggests Jetson Orin Nano but does not establish the execution environment explicitly."
+  ]
+}

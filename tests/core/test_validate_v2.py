@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from arxiv_triage.models import reader as reader_models  # noqa: E402
+from arxiv_triage.models import screening as screening_models  # noqa: E402
 
 
 def load_legacy_validator():
@@ -61,6 +62,24 @@ def test_investigation_reader_facade_uses_embedded_source_text(monkeypatch) -> N
     assert (
         validator.validate_investigation_reader_output(
             "task-with-source-text", b"raw reader output"
+        )
+        is expected
+    )
+
+
+def test_investigation_screening_facade_uses_single_gateway(monkeypatch) -> None:
+    validator = load_legacy_validator()
+    expected = object()
+
+    def validate(task, value):
+        assert task == "closed-screening-task"
+        assert value == b"raw screening output"
+        return expected
+
+    monkeypatch.setattr(screening_models, "validate_screening_output", validate)
+    assert (
+        validator.validate_investigation_screening_output(
+            "closed-screening-task", b"raw screening output"
         )
         is expected
     )

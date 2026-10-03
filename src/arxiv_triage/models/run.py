@@ -20,8 +20,8 @@ from .base import (
 )
 
 
-Role = Literal["paper_reader", "critic", "reviewer"]
-JobType = Literal["paper_read", "paper_critique", "corpus_review"]
+Role = Literal["paper_screener", "paper_reader", "critic", "reviewer"]
+JobType = Literal["paper_screen", "paper_read", "paper_critique", "corpus_review"]
 AgentRunStatus = Literal[
     "running", "output_received", "invalid", "completed", "failed", "interrupted"
 ]
@@ -37,19 +37,32 @@ TraceEventType = Literal[
 
 
 def _check_job_scope(
-    *, role: Role, job_type: JobType, paper_id: str | None
+    *,
+    role: Role,
+    job_type: JobType,
+    paper_id: str | None,
+    screening_batch_id: str | None,
 ) -> None:
     expected_job = {
+        "paper_screener": "paper_screen",
         "paper_reader": "paper_read",
         "critic": "paper_critique",
         "reviewer": "corpus_review",
     }
     if job_type != expected_job[role]:
         raise ValueError("role and job_type do not match")
-    if role in {"paper_reader", "critic"} and paper_id is None:
-        raise ValueError("paper reader and critic runs require paper_id")
-    if role == "reviewer" and paper_id is not None:
-        raise ValueError("corpus-scoped runs require paper_id null")
+    if role in {"paper_reader", "critic"}:
+        if paper_id is None or screening_batch_id is not None:
+            raise ValueError(
+                "paper reader and critic runs require paper_id and null screening_batch_id"
+            )
+    elif role == "paper_screener":
+        if paper_id is not None or screening_batch_id is None:
+            raise ValueError(
+                "paper screener runs require null paper_id and screening_batch_id"
+            )
+    elif paper_id is not None or screening_batch_id is not None:
+        raise ValueError("corpus-scoped runs require paper_id and screening_batch_id null")
 
 
 def _as_datetime(value: str) -> datetime:
@@ -70,6 +83,7 @@ class AgentRun(ContractModel):
     agent_run_id: Identifier
     investigation_id: Identifier
     paper_id: Identifier | None
+    screening_batch_id: Identifier | None
     role: Role
     job_type: JobType
     attempt_no: PositiveInt
@@ -96,7 +110,12 @@ class AgentRun(ContractModel):
 
     @model_validator(mode="after")
     def lifecycle_is_consistent(self) -> Self:
-        _check_job_scope(role=self.role, job_type=self.job_type, paper_id=self.paper_id)
+        _check_job_scope(
+            role=self.role,
+            job_type=self.job_type,
+            paper_id=self.paper_id,
+            screening_batch_id=self.screening_batch_id,
+        )
         if self.attempt_no > 2:
             raise ValueError("attempt_no must be 1 or 2")
         _check_path_hash_pair(
@@ -289,6 +308,7 @@ class TraceEvent(ContractModel):
     agent_run_id: Identifier
     investigation_id: Identifier
     paper_id: Identifier | None
+    screening_batch_id: Identifier | None
     role: Role
     job_type: JobType
     attempt_no: PositiveInt
@@ -308,7 +328,12 @@ class TraceEvent(ContractModel):
 
     @model_validator(mode="after")
     def event_is_consistent(self) -> Self:
-        _check_job_scope(role=self.role, job_type=self.job_type, paper_id=self.paper_id)
+        _check_job_scope(
+            role=self.role,
+            job_type=self.job_type,
+            paper_id=self.paper_id,
+            screening_batch_id=self.screening_batch_id,
+        )
         if self.attempt_no > 2:
             raise ValueError("attempt_no must be 1 or 2")
         _check_path_hash_pair(

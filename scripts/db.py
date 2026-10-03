@@ -26,6 +26,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+from arxiv_triage.storage import project_repository  # noqa: E402
+from arxiv_triage.storage.sqlite import rebuild_index  # noqa: E402
+
 DEFAULT_DB = Path("data/triage.db")
 
 # role -> the agent definition whose hash identifies the version
@@ -415,6 +421,18 @@ def cmd_ingest(args) -> int:
     return 0
 
 
+def cmd_rebuild(args) -> int:
+    output = args.output or args.root / "data/triage-v2.db"
+    try:
+        rows = project_repository(args.root)
+        rebuild_index(output, rows)
+    except Exception as exc:
+        die(f"schema-2.0 rebuild failed: {type(exc).__name__}: {exc}")
+    counts = {table: len(values) for table, values in rows.items() if values}
+    print(json.dumps({"status": "rebuilt", "database": str(output), "rows": counts}, indent=2))
+    return 0
+
+
 # ------------------------------------------------------------------------------- cli
 
 def main(argv: list[str] | None = None) -> int:
@@ -439,6 +457,13 @@ def main(argv: list[str] | None = None) -> int:
         help="insert a stub paper row if the paper is not in the database yet",
     )
     p_ing.set_defaults(func=cmd_ingest)
+
+    p_rebuild = sub.add_parser(
+        "rebuild", help="rebuild the schema-2.0 index from canonical artifacts"
+    )
+    p_rebuild.add_argument("--root", type=Path, default=ROOT)
+    p_rebuild.add_argument("--output", type=Path)
+    p_rebuild.set_defaults(func=cmd_rebuild)
 
     args = parser.parse_args(argv)
     return args.func(args)

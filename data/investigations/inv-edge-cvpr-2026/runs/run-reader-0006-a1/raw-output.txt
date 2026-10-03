@@ -1,0 +1,163 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0006-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-422bb466fbdc5e02",
+  "source_document_id": "src-9ae7396d664b5911",
+  "input_hash": "3344bcab97592b30605e9765d0909c9094394480c04033f6027b764eaca0433a",
+  "problem": "Blind face restoration must balance distortion and perceptual quality while avoiding the latency of iterative generative restoration and identity or structural drift.",
+  "method": "DirectFlow distills a multi-step rectified-flow teacher's transported posterior mean into a single-step latent consistency student, using degradation-aware conditioning, UNet LoRA, and a score-guided consistency loss.",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_kind": "problem",
+      "text": "The paper frames blind face restoration as an ill-posed inverse problem involving blur, noise, compression artifacts, and downsampling, governed by a perception-distortion trade-off.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 4152,
+        "end_char": 4559,
+        "quote": "The restoration of high-quality face images from degraded the iterative denoising process requires 20 to 50 neural func-\nobservations (encompassing blur, noise, compression ar- tion evaluations (NFEs), precluding real-time deployment.\ntifacts, and downsampling) is an ill-posed inverse prob- Moreover, because these methods typically initiate sampling\nlem whose solution space is governed by the perception-"
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-002",
+      "claim_kind": "method",
+      "text": "DirectFlow distills the transported posterior mean of a rectified-flow teacher into a latent consistency model intended to operate in one forward pass.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 1709,
+        "end_char": 2202,
+        "quote": "In this work, we propose DirectFlow to tive diffusion paths are highly curved, causing naive one-step con-\nsistency jumps to fail. (b) DirectFlow constructs a direct mapping\nachieve this balance in a single forward pass. Rather than\nto the transported posterior mean, attempting to achieve optimal\nnaively matching ground-truth images, DirectFlow distills\nperceptual quality in a single step.\nthe transported posterior mean of a Rectified Flow teacher\ndirectly into a latent consistency model."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-003",
+      "claim_kind": "method",
+      "text": "Training uses a two-stage curriculum: Stage A aligns visual and spatial encoders plus the semantic adapter, and Stage B refines transport through UNet LoRA while freezing the visual and spatial encoders.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 17663,
+        "end_char": 17922,
+        "quote": "with a two-stage curriculum: Stage A aligns conditioning low-level pixel reconstruction.\nmodules (visual/spatial encoders + semantic adapter), and 3.3. Degradation-Aware Conditioning\nStage B refines transport via UNet LoRA with visual/spatial\nencoders frozen."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-004",
+      "claim_kind": "result",
+      "text": "The paper reports that one-step DirectFlow matches the perceptual quality of a 25-step flow-matching teacher while providing 7.5-times faster inference.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 3378,
+        "end_char": 3849,
+        "quote": "one-step DirectFlow ages over all plausible high-quality images. This averaging\nmatches the perceptual quality of a 25-step flow-matching suppresses high-frequency detail and produces smooth, over-\nteacher while accelerating inference by 7.5×, establishing regularized textures. Architectures such as SwinIR [21]\na highly efficient state-of-the-art architecture for real-time, epitomize this regime by achieving excellent PSNR at the\nhigh-fidelity blind face restoration."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-005",
+      "claim_kind": "assumption",
+      "text": "The inference-efficiency figure specifies 512-by-512 inputs and an NVIDIA A6000 GPU, so its latency and throughput presentation is not a physical edge-device measurement.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 10274,
+        "end_char": 10311,
+        "quote": "Inference Efficiency (512x512, A6000)"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-006",
+      "claim_kind": "result",
+      "text": "Table 1 reports a DirectFlow inference time of 0.289 seconds and compares it with regression and generative baselines across CelebA-Test, LFW-Test, WebPhoto-Test, and WIDER-Test.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 25678,
+        "end_char": 27080,
+        "quote": "Time\nMethod Celeba-Test LFW-Test WebPhoto-Test WIDER-Test (sec)\nLPIPS ↓ FID ↓ MUSIQ ↑ IDS ↑/↓ PSNR ↑ SSIM ↑ FID ↓ MUSIQ ↑ FID ↓ MUSIQ ↑ FID ↓ MUSIQ ↑\nInput 0.574 145.22 72.81 0.32/47.94 22.72 0.706 138.87 26.87 171.63 18.63 201.31 14.22 –\nPULSE† [30] 0.356 68.33 66.46 0.50/41.08 22.10 0.592 67.01 65.00 85.69 63.88 70.65 63.01 3.509\nDFDNet† [18] 0.332 54.21 72.08 0.52/40.32 24.27 0.628 60.28 73.06 92.71 68.50 59.56 62.02 0.438\nGFPGAN† [45] 0.230 49.84 73.90 0.56/38.79 24.64 0.688 50.36 73.57 87.47 72.08 39.45 72.79 0.312\nRestoreFormer† [48] 0.241 50.04 73.85 0.63/36.16 24.61 0.660 48.77 73.70 78.85 69.83 50.04 67.83 0.066\nVQFR† [8] 0.245 41.84 75.18 0.64/35.74 24.06 0.660 51.33 71.74 75.77 72.02 44.09 74.01 0.177\nCodeFormer† [62] 0.227 52.94 75.55 0.60/37.27 25.19 0.685 52.84 75.48 83.95 74.00 39.22 73.41 0.085\nDR2⋆ [50] 0.264 54.48 67.99 0.42/44.00 25.03 0.617 45.71 71.50 109.24 62.37 48.20 60.28 1.775\nDifFace⋆ [56] 0.272 39.23 68.87 0.48/41.84 24.80 0.684 46.31 69.76 80.86 65.37 37.74 65.02 3.248\nPGDiff⋆ [52] 0.300 47.26 71.81 –/55.90 22.72 0.659 44.65 71.74 101.68 67.92 38.38 68.26 14.768\nWaveFace⋆ [32] 0.362 57.58 – 0.67/34.50 23.56 0.691 53.88 73.54 78.01 70.45 37.23 72.89 19.370\nInterLCM⋆ [17] 0.223 45.38 76.58 0.65/33.64 25.15 0.718 51.32 76.16 75.48 75.88 35.43 76.29 0.421\nDirectFlow (Ours)⋆ 0.221 40.96 76.12 0.66/33.40 25.24 0.714 45.08 75.92 75.92 75.42 36.91 75.11 0.289"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-007",
+      "claim_kind": "assumption",
+      "text": "The student is trained exclusively on 70,000 FFHQ face images resized to 512 by 512 pixels, constraining the demonstrated training distribution to that face corpus and synthetic degradation pipeline.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 30048,
+        "end_char": 30441,
+        "quote": "Datasets. Following standard protocols in blind face restora- mixed precision and EMA (0.999). In Stage A, we optimize\ntion, we train our DirectFlow student network exclusively on the visual encoder, spatial encoder, and semantic adapter pro-\nthe FFHQ dataset [14], which contains 70,000 high-quality jection/gate, while keeping the UNet frozen (learning rate\nface images resized to 512 × 512."
+      },
+      "evidence_modality": "dataset_only",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-008",
+      "claim_kind": "result",
+      "text": "On the CelebA-Test ablation, removing SGCL increases FID from 40.96 for the full model to 42.63.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 31181,
+        "end_char": 31656,
+        "quote": "Table 3. Ablation study on CelebA-Test. Each row removes one\ning stable optimization under one-step inference. Unless oth- component from the full model.\nerwise specified, all reported results use this Stage A→Stage Configuration PSNR↑ LPIPS↓ FID↓ Note\nB schedule. DirectFlow (Full) 25.24 0.221 40.96 Complete model\nw/o DINOv2 Adapter 24.98 0.232 44.18 No deg. awareness\nQuantitative Results. The quantitative evaluation on the w/o SGCL 25.07 0.228 42.63 No manifold guidance"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-009",
+      "claim_kind": "assumption",
+      "text": "The carbon calculation assumes a power usage effectiveness of 1.1 and a carbon intensity of 0.385 kilograms of CO2 equivalent per kilowatt-hour.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 36027,
+        "end_char": 36195,
+        "quote": "Power Usage Effectiveness (PUE) of 1.1, and a national av-\nImpact of the Semantic Adapter. Removing the DINOv2 erage carbon intensity factor of 0.385 kg CO2 eq per kWh."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": [
+    "The supplied paper states suitability for edge-device deployment, but the reported inference-efficiency figure is labeled for an A6000 GPU; no measurement on a physical target edge device is identified in the frozen source.",
+    "The frozen task does not supply the ordered EDGE CFP topic labels, so an exact CFP-topic label cannot be assigned from the paper source alone.",
+    "No explicit paper-stated limitations section was identified; training-corpus scope and carbon-accounting assumptions are surfaced as bounded assumptions instead."
+  ]
+}

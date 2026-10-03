@@ -1,6 +1,7 @@
 # Core Investigation Platform — Implementation Specification
 
-Status: **Core contracts approved; agent behavior under review**
+Status: **Phase 1 approved; screening contracts and paper-screener behavior
+approved and implemented**
 
 Implements: `docs/plans/01-core-investigation-platform.md`
 
@@ -13,7 +14,7 @@ investigation, regardless of how its paper corpus is discovered or how papers
 are scored. It covers:
 
 - investigation and per-paper lifecycles
-- orchestrator, paper-reader, critic, and reviewer boundaries
+- orchestrator, paper-screener, paper-reader, critic, and reviewer boundaries
 - object transfers between those roles
 - source-before-reader enforcement
 - agent-run persistence and tracing
@@ -39,12 +40,15 @@ contracts.
    index, not hidden workflow state.
 2. A path locates bytes; a SHA-256 hash identifies the exact bytes used.
 3. External retrieval and deterministic validation are implemented in code.
-   Agents perform bounded reading, criticism, and corpus-level review.
+   Agents perform bounded screening, reading, criticism, and corpus-level
+   review.
 4. The orchestrator requests transitions; `workflow.py` decides whether each
    transition is legal.
 5. The reader never fetches. A reader task cannot be constructed until a frozen
    source packet exists and its hashes have been verified.
-6. Each included corpus paper has one logical reader job and one logical critic job.
+6. Semantic-screening mode has one atomic logical job per stable candidate
+   batch. Each included corpus paper has one logical reader job and one logical
+   critic job.
    Failed physical attempts remain visible and cannot create two canonical
    results.
 7. The reviewer runs once per completed corpus and never edits reader or critic
@@ -63,6 +67,11 @@ flowchart LR
     U[User or calling component] --> O[Orchestrator agent]
     O --> W[Deterministic workflow service]
     W --> A[Acquisition adapters]
+    A --> K[(Frozen candidate set)]
+    K -->|ScreeningTask batches| G[Paper-screener workers]
+    G -->|Canonical ScreeningRecords| P
+    K -->|Authoritative-membership bypass| M
+    P -->|Validated complete screening| M
     A --> S[(Frozen source artifacts)]
     W --> M[(Frozen corpus manifest)]
     W -. authorizes jobs .-> D[Agent dispatcher]
@@ -102,6 +111,7 @@ run persistence and are dispatched again by the orchestrator.
 | Role | Cardinality | Input | Output | Explicit exclusions |
 |---|---:|---|---|---|
 | Orchestrator | 1 per investigation | Investigation inputs and workflow status | Dispatch requests and final completion request | Does not read papers, rewrite artifacts, or self-approve research conclusions |
+| Paper screener | 1 logical job per candidate batch in semantic mode | Frozen `ScreeningTask` | `ScreeningRecord` | No fetching, full-paper reading, ranking, or candidate omission |
 | Paper reader | 1 logical job per paper | Frozen `ReaderTask` | `ReaderRecord` | No fetching, claim verification, corpus comparison, ranking, or global novelty claim |
 | Critic | 1 logical job per paper | Frozen `CriticTask` | `CriticRecord` | No record rewriting, corpus-wide comparison, or final report generation |
 | Reviewer | 1 logical job per investigation | Frozen `ReviewerTask` | `ReviewRecord` | No fetching, paper rereading, silent correction, or removal of failures |
@@ -117,6 +127,11 @@ classDiagram
     class InvestigationSpec
     class ObjectiveProfile
     class SearchPlan
+    class ScreeningScope
+    class CandidateSet
+    class CandidatePaper
+    class ScreeningTask
+    class ScreeningRecord
     class CorpusManifest
     class CorpusEntry
     class PaperIdentity
@@ -134,6 +149,15 @@ classDiagram
 
     InvestigationSpec --> ObjectiveProfile : references hash
     InvestigationSpec --> SearchPlan : references hash
+    SearchPlan --> ScreeningScope : materializes reviewed boundary
+    SearchPlan --> CandidateSet : completed discovery freezes
+    CandidateSet "1" *-- "0..*" CandidatePaper
+    CandidateSet --> ScreeningTask : partitions in order
+    ScreeningScope --> ScreeningTask
+    ObjectiveProfile --> ScreeningTask
+    ScreeningTask --> AgentRun : dispatches
+    AgentRun --> ScreeningRecord : validates atomically as
+    ScreeningRecord --> CorpusManifest : complete coverage routes
     InvestigationSpec --> CorpusManifest : freezes
     CorpusManifest "1" *-- "1..*" CorpusEntry
     CorpusEntry --> PaperIdentity
@@ -164,7 +188,10 @@ stateDiagram-v2
     [*] --> draft
     draft --> inputs_validated
     inputs_validated --> discovering
-    discovering --> corpus_frozen
+    discovering --> candidates_frozen: completion rule succeeded
+    candidates_frozen --> screening: semantic mode
+    screening --> corpus_frozen: all batches canonical and coverage exact
+    candidates_frozen --> corpus_frozen: explicit authoritative-membership bypass
     corpus_frozen --> analyzing
     analyzing --> reviewing: all membership dispositions and included outcomes final
     reviewing --> rendering: valid review artifact
@@ -174,6 +201,8 @@ stateDiagram-v2
     draft --> failed
     inputs_validated --> failed
     discovering --> failed
+    candidates_frozen --> failed
+    screening --> failed
     corpus_frozen --> failed
     analyzing --> failed
     reviewing --> failed
@@ -218,6 +247,7 @@ sequenceDiagram
     participant W as workflow.py
     participant A as Acquisition code
     participant P as Persistence
+    participant S as Paper screener
     participant R as Paper reader
     participant C as Critic
     participant V as Reviewer
@@ -227,9 +257,23 @@ sequenceDiagram
     O->>W: create_investigation(inputs)
     W->>P: validate, hash, persist inputs
     W-->>O: investigation_id, inputs_validated
-    O->>W: build_and_freeze_corpus()
+    O->>W: begin_discovery()
     W->>A: discover/resolve configured corpus
     A-->>W: candidates and raw responses
+    W->>P: save CandidateSet after completion rule succeeds
+    W-->>O: candidates_frozen
+
+    alt Semantic screening
+        loop Each stable non-empty batch, bounded concurrency
+            O->>W: prepare_screening_task(batch_ordinal)
+            O->>S: dispatch ScreeningTask
+            S-->>P: raw ScreeningRecord response
+            P-->>W: atomic canonical record or failed attempt
+        end
+        W->>W: verify global candidate coverage and route membership
+    else Explicit authoritative workshop membership
+        W->>W: include every listed candidate
+    end
     W->>P: save CorpusManifest
     W-->>O: corpus_frozen
 
@@ -343,7 +387,27 @@ The core ranker accepts only declared criteria.
 The core treats provider configuration as typed component data. It requires an
 explicit completion rule and budget; it does not define search semantics.
 
-### 7.4 `CorpusManifest`
+### 7.4 Screening inputs
+
+After the active search completion rule succeeds, deterministic code freezes an
+ordered `CandidateSet`. Each `CandidatePaper` binds its complete
+`PaperIdentity`, nullable abstract, non-empty discovery references, and
+`candidate_hash`. The candidate-set self-hash additionally binds the
+investigation, search plan, discovery ledger, freeze time, and candidate order.
+A successfully completed search may produce an empty set; provider failure may
+not.
+
+Semantic screening receives a closed, self-hashed `ScreeningScope` containing
+only the investigation question plus ordered unique inclusion and exclusion
+rules. It receives the complete `ObjectiveProfile` separately. This preserves
+the distinction between membership boundaries and assessment criteria.
+
+Deterministic code partitions non-empty candidates in frozen order and creates
+one self-hashed `ScreeningTask` per stable `screening_batch_id`. Each task binds
+the candidate-set, objective, scope, positive ordinal and batch bound, and its
+non-empty candidate slice. Candidate IDs and hashes are unique within a batch.
+
+### 7.5 `CorpusManifest`
 
 ```json
 {
@@ -398,7 +462,14 @@ recorded in separate paper-state artifacts and projected into reports; the
 manifest itself is not rewritten during analysis. Excluded and
 membership-unresolved entries never receive reader or critic jobs.
 
-### 7.5 `PaperIdentity`
+The terminal paper-state artifact is a self-hashed `PaperStateRecord` containing
+schema, investigation and paper identity; `terminal_state`; nullable source,
+reader-run, and critic-run IDs; nullable `error`; `completed_at`; and
+`state_hash`. Complete and analysis-unresolved records require source, reader,
+and critic IDs and forbid an error. Failed records require an error and forbid a
+canonical critic ID.
+
+### 7.6 `PaperIdentity`
 
 ```json
 {
@@ -418,7 +489,7 @@ membership-unresolved entries never receive reader or critic jobs.
 `paper_id` is internal and stable. arXiv, DOI, OpenReview, and URLs are
 identifiers, not primary keys.
 
-### 7.6 `SourcePacket`
+### 7.7 `SourcePacket`
 
 ```json
 {
@@ -457,7 +528,29 @@ is available. Paper `identity_status` is `unresolved`, `resolved_exact`,
 
 ## 8. Worker transfer contracts
 
-### 8.1 `ReaderTask`
+### 8.1 `ScreeningTask` and `ScreeningRecord`
+
+`ScreeningRecord` copies the task's run, investigation, batch, candidate-set,
+objective, scope, and input hashes exactly. It returns one ordered
+`ScreeningDecision` per candidate with `paper_id`, `candidate_hash`, state,
+reason, and zero or more typed evidence spans. State is `selected`,
+`screened_out`, or `needs_review`.
+
+Evidence spans identify `title` or `abstract` and use Python Unicode code-point
+offsets. Their quote must reconstruct exactly; an abstract span is invalid when
+the candidate abstract is null. The sole admission gateway is
+`validate_screening_output(task, raw_output)`. Missing, duplicate, foreign,
+substituted, or reordered decisions reject the entire attempt.
+
+After all canonical batches finish, the global barrier requires exactly one
+decision per frozen candidate under the same candidate set, objective, and
+scope. `selected` and `needs_review` route to `included`; `screened_out` routes
+to `excluded`; deterministic identity failure may override either route to
+`membership_unresolved`. A component that explicitly declares authoritative
+workshop membership bypasses semantic screening and includes every listed
+candidate.
+
+### 8.2 `ReaderTask`
 
 ```json
 {
@@ -484,7 +577,7 @@ UTF-8 SHA-256 of `source_text` must equal
 network tool. It receives focus questions, not ranking weights or a desired
 conclusion. `input_hash` is the task self-hash excluding only that field.
 
-### 8.2 `ReaderRecord`
+### 8.3 `ReaderRecord`
 
 ```json
 {
@@ -557,7 +650,7 @@ be internally decomposed, but callers do not validate or promote reader
 fragments independently. Locator reconstruction uses `task.source_text`. The
 critic, not this gateway, judges semantic support.
 
-### 8.3 `CriticTask`
+### 8.4 `CriticTask`
 
 ```json
 {
@@ -572,7 +665,8 @@ critic, not this gateway, judges semantic support.
   "objective_profile": {},
   "critic_rubric": {
     "component": "component-defined-string",
-    "skill_hash": null
+    "skill_hash": null,
+    "checks": []
   },
   "input_hash": "64-lowercase-hex"
 }
@@ -583,7 +677,7 @@ embedded `source_text` must equal `source_packet.normalized_sha256`. It sees no
 reader reasoning transcript, preliminary rank, reviewer opinion, or desired
 outcome. `input_hash` is the task self-hash excluding only that field.
 
-### 8.4 `CriticRecord`
+### 8.5 `CriticRecord`
 
 ```json
 {
@@ -626,7 +720,11 @@ non-empty `human_review_reasons` array; no duplicate boolean is serialized.
 One `validate_critic_output(task, raw_output)` gateway owns parsing and every
 task/result relationship check.
 
-### 8.5 `ReviewerTask` and `ReviewRecord`
+The ordered component checks are embedded in `critic_rubric.checks`. The
+nullable hash records component provenance but cannot replace instructions in
+a task sent to a tool-free worker.
+
+### 8.6 `ReviewerTask` and `ReviewRecord`
 
 `ReviewerTask` contains exactly:
 
@@ -652,7 +750,8 @@ task/result relationship check.
   "ranking_artifact": null,
   "reviewer_rubric": {
     "component": "component-defined-string",
-    "skill_hash": null
+    "skill_hash": null,
+    "checks": []
   },
   "input_hash": "64-lowercase-hex"
 }
@@ -666,6 +765,8 @@ validated by that component before dispatch. The task self-hash excludes only
 `input_hash`.
 
 It does not include hidden worker reasoning or mutable conversation history.
+The same instruction rule applies to `reviewer_rubric.checks`: component
+checks are frozen task content, while `skill_hash` is provenance.
 
 `ReviewRecord` contains:
 
@@ -839,6 +940,7 @@ validation passes:
 ```text
 papers/<paper-id>/reader/canonical.json
 papers/<paper-id>/critic/canonical.json
+screening/<objective-profile-hash>/<screening-batch-id>/canonical.json
 review/canonical.json
 ```
 
@@ -850,17 +952,19 @@ canonical artifact already exists for a different validated input hash.
 `AgentRun` is the complete physical-attempt projection and contains:
 
 ```text
-schema_version, agent_run_id, investigation_id, paper_id, role, job_type,
-attempt_no, status, model, agent_definition_hash, component_skill_hash,
+schema_version, agent_run_id, investigation_id, paper_id, screening_batch_id,
+role, job_type, attempt_no, status, model, agent_definition_hash, component_skill_hash,
 objective_profile_hash, input_path, input_hash, raw_output_path,
 raw_output_hash, validation_path, validation_hash, canonical_path,
 canonical_hash, started_at, completed_at, duration_ms, tokens_in, tokens_out,
 cost_usd, error
 ```
 
-Role/job pairs are `paper_reader`/`paper_read`, `critic`/`paper_critique`, and
-`reviewer`/`corpus_review`; paper roles require `paper_id`, while corpus roles
-require null. Attempt is 1 or 2. Status is `running`, `output_received`,
+Role/job pairs are `paper_screener`/`paper_screen`,
+`paper_reader`/`paper_read`, `critic`/`paper_critique`, and
+`reviewer`/`corpus_review`. Screeners require null `paper_id` and a batch ID;
+reader and critic runs require a paper ID and null batch ID; reviewer runs
+require both null. Attempt is 1 or 2. Status is `running`, `output_received`,
 `invalid`, `completed`, `failed`, or `interrupted`. Each artifact path and hash
 is an all-or-null pair. Terminal states require `completed_at` and
 `duration_ms`. Completed runs require raw, validation, and canonical artifacts
@@ -914,6 +1018,7 @@ Every event contains:
   "agent_run_id": "run-reader-a1b2c3",
   "investigation_id": "inv-20260912-01a2b3c4",
   "paper_id": "paper-9a45d231",
+  "screening_batch_id": null,
   "role": "paper_reader",
   "job_type": "paper_read",
   "attempt_no": 1,
@@ -987,8 +1092,10 @@ data/
       investigation.json
       corpus.json
       discovery/
+        candidates.json
         raw/<discovery-event-id>.*
         attempts/<attempt-id>/
+      screening/<objective-profile-hash>/<screening-batch-id>/canonical.json
       paper-state/<paper-id>.json
       papers/<paper-id>/
         reader/canonical.json
@@ -1010,7 +1117,7 @@ out/
     papers.csv
     human-review.json
 
-data/triage.db
+data/triage-v2.db
 ```
 
 Globally cached paper sources are immutable and addressed by source-document
@@ -1030,12 +1137,23 @@ All paths stored inside JSON or SQLite are repository-relative POSIX paths.
 - Enable foreign keys, WAL mode, and a bounded busy timeout.
 - `rebuild-db` deletes no artifacts and reconstructs the index from disk.
 
-### 11.2 Proposed schema
+### 11.2 Index schema version 2
+
+The executable schema is `SCHEMA_SQL` in
+`src/arxiv_triage/storage/sqlite.py`. The projection has its own explicit
+`index_schema_version = 2`, independent of artifact `schema_version`. An
+existing database with no index version or a different version is rejected and
+must be rebuilt from canonical artifacts; it is never migrated in place.
 
 ```sql
 PRAGMA foreign_keys = ON;
 PRAGMA journal_mode = WAL;
 PRAGMA busy_timeout = 5000;
+
+CREATE TABLE index_metadata (
+    singleton            INTEGER PRIMARY KEY CHECK (singleton = 1),
+    index_schema_version INTEGER NOT NULL
+);
 
 CREATE TABLE objective_profiles (
     profile_hash       TEXT PRIMARY KEY,
@@ -1062,7 +1180,8 @@ CREATE TABLE investigations (
     kind                   TEXT NOT NULL,
     question               TEXT NOT NULL,
     status                 TEXT NOT NULL CHECK (status IN (
-        'draft', 'inputs_validated', 'discovering', 'corpus_frozen',
+        'draft', 'inputs_validated', 'discovering', 'candidates_frozen',
+        'screening', 'corpus_frozen',
         'analyzing', 'reviewing', 'review_blocked', 'rendering', 'complete',
         'complete_with_warnings', 'failed'
     )),
@@ -1118,6 +1237,18 @@ CREATE TABLE source_documents (
     UNIQUE (paper_id, packet_hash)
 );
 
+CREATE TABLE candidate_papers (
+    investigation_id   TEXT NOT NULL REFERENCES investigations(investigation_id),
+    paper_id           TEXT NOT NULL REFERENCES papers(paper_id),
+    candidate_index    INTEGER NOT NULL CHECK (candidate_index >= 0),
+    candidate_hash     TEXT NOT NULL,
+    abstract           TEXT,
+    discovery_refs_json TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, paper_id),
+    UNIQUE (investigation_id, candidate_index),
+    UNIQUE (investigation_id, candidate_hash)
+);
+
 CREATE TABLE corpus_membership (
     investigation_id   TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id            TEXT NOT NULL REFERENCES papers(paper_id),
@@ -1140,10 +1271,13 @@ CREATE TABLE agent_runs (
     agent_run_id           TEXT PRIMARY KEY,
     investigation_id      TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id               TEXT REFERENCES papers(paper_id),
+    screening_batch_id     TEXT,
     role                   TEXT NOT NULL CHECK (role IN (
-        'paper_reader', 'critic', 'reviewer'
+        'paper_screener', 'paper_reader', 'critic', 'reviewer'
     )),
-    job_type               TEXT NOT NULL,
+    job_type               TEXT NOT NULL CHECK (job_type IN (
+        'paper_screen', 'paper_read', 'paper_critique', 'corpus_review'
+    )),
     attempt_no             INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 2),
     status                 TEXT NOT NULL CHECK (status IN (
         'running', 'output_received', 'invalid', 'completed', 'failed', 'interrupted'
@@ -1166,13 +1300,50 @@ CREATE TABLE agent_runs (
     tokens_in              INTEGER,
     tokens_out             INTEGER,
     cost_usd               REAL,
-    error                  TEXT,
-    UNIQUE (investigation_id, paper_id, job_type, attempt_no)
+    error                  TEXT
 );
+
+CREATE UNIQUE INDEX one_paper_job_attempt
+ON agent_runs(investigation_id, paper_id, job_type, attempt_no)
+WHERE paper_id IS NOT NULL AND screening_batch_id IS NULL;
+
+CREATE UNIQUE INDEX one_screening_batch_attempt
+ON agent_runs(investigation_id, screening_batch_id, job_type, attempt_no)
+WHERE paper_id IS NULL AND screening_batch_id IS NOT NULL;
 
 CREATE UNIQUE INDEX one_corpus_job_attempt
 ON agent_runs(investigation_id, job_type, attempt_no)
-WHERE paper_id IS NULL;
+WHERE paper_id IS NULL AND screening_batch_id IS NULL;
+
+CREATE TABLE screening_records (
+    investigation_id       TEXT NOT NULL REFERENCES investigations(investigation_id),
+    screening_batch_id     TEXT NOT NULL,
+    agent_run_id            TEXT NOT NULL UNIQUE REFERENCES agent_runs(agent_run_id),
+    candidate_set_hash      TEXT NOT NULL,
+    objective_profile_hash  TEXT NOT NULL REFERENCES objective_profiles(profile_hash),
+    screening_scope_hash    TEXT NOT NULL,
+    input_hash              TEXT NOT NULL,
+    artifact_path           TEXT NOT NULL UNIQUE,
+    artifact_hash           TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, screening_batch_id)
+);
+
+CREATE TABLE screening_decisions (
+    investigation_id      TEXT NOT NULL,
+    screening_batch_id    TEXT NOT NULL,
+    paper_id              TEXT NOT NULL,
+    candidate_hash        TEXT NOT NULL,
+    state                 TEXT NOT NULL CHECK (state IN (
+        'selected', 'screened_out', 'needs_review'
+    )),
+    reason                TEXT NOT NULL,
+    evidence_spans_json   TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, paper_id),
+    FOREIGN KEY (investigation_id, screening_batch_id)
+        REFERENCES screening_records(investigation_id, screening_batch_id),
+    FOREIGN KEY (investigation_id, paper_id)
+        REFERENCES candidate_papers(investigation_id, paper_id)
+);
 
 CREATE TABLE reader_records (
     reader_record_id    TEXT PRIMARY KEY,
@@ -1291,7 +1462,9 @@ CREATE TABLE review_evidence (
 CREATE INDEX idx_corpus_terminal
 ON corpus_membership(investigation_id, terminal_state);
 CREATE INDEX idx_runs_scope
-ON agent_runs(investigation_id, paper_id, job_type, status);
+ON agent_runs(investigation_id, paper_id, screening_batch_id, job_type, status);
+CREATE INDEX idx_screening_decisions_state
+ON screening_decisions(investigation_id, state);
 CREATE INDEX idx_claims_reader
 ON claims(reader_record_id);
 CREATE INDEX idx_assessments_criterion
@@ -1301,8 +1474,12 @@ ON objective_assessments(criterion_id);
 Cross-table rules that SQLite cannot express cleanly are enforced by Pydantic
 validation before a single ingestion transaction:
 
-- `agent_runs.paper_id` must be non-null for reader and critic jobs and null for
-  corpus review.
+- Screener runs require null `paper_id` and non-null `screening_batch_id`;
+  reader and critic runs require the inverse; reviewer runs require both null.
+- Screening records must bind the frozen candidate set, objective, scope,
+  physical input, and stable batch. Their decisions must cover the ordered task
+  exactly; global coverage must equal the entire candidate set before semantic
+  membership freezes.
 - Excluded and membership-unresolved corpus entries must keep
   `corpus_membership.terminal_state` null and never receive reader or critic
   jobs. An included entry may keep it null while analysis is in progress but
@@ -1326,7 +1503,10 @@ status updates.
 |---|---|---|---|
 | `create_investigation` | none | all input schemas and hashes valid | `inputs_validated` |
 | `begin_discovery` | `inputs_validated` | search plan present | `discovering` |
-| `freeze_corpus` | `discovering` | membership and counts validate | `corpus_frozen` |
+| `freeze_candidates` | `discovering` | search completion succeeded and candidate set validates | `candidates_frozen` |
+| `begin_screening` | `candidates_frozen` | semantic-screening mode selected | `screening` |
+| `freeze_screened_corpus` | `screening` | exact screening coverage, membership, and counts validate | `corpus_frozen` |
+| `freeze_authoritative_corpus` | `candidates_frozen` | authoritative-membership bypass explicit; membership and counts validate | `corpus_frozen` |
 | `prepare_reader` | paper has `source_frozen` | source files and hashes verify; no canonical reader | `ReaderTask` |
 | `accept_reader` | reader running | output and cross-input checks pass | `reader_validated` |
 | `prepare_critic` | `reader_validated` | source and canonical reader hashes verify; no canonical critic | `CriticTask` |
@@ -1340,8 +1520,9 @@ database rows.
 
 ## 13. Retry and failure policy
 
-The proposed core policy is:
+The core policy is:
 
+- One atomic logical screener job per stable non-empty candidate batch.
 - One logical reader job and one logical critic job per included paper.
 - At most two physical attempts for each logical job.
 - Retry only transport failures, missing output, malformed JSON, or schema
@@ -1350,6 +1531,9 @@ The proposed core policy is:
   `uncertain` critic result is not a retry condition. It makes the paper
   `analysis_unresolved` or creates human review.
 - The reviewer has one attempt plus one schema-correction retry.
+- If a screening batch exhausts both attempts, independent in-flight batches
+  finish and the investigation fails; no partial row is salvaged and no
+  decision is synthesized.
 - Retrieval retries are provider-specific but always bounded and recorded.
 - No worker receives another worker's hidden reasoning or prior failed response,
   except the minimum deterministic validation errors needed for correction.
@@ -1362,7 +1546,10 @@ separate evaluation, and an explicit decision record.
 
 ```mermaid
 flowchart TB
-    C[Corpus frozen] --> P1[Paper 1: fetch → reader → critic]
+    K[Candidates frozen] --> S[Bounded screening batches]
+    S --> C[Corpus frozen after complete coverage]
+    K -->|Explicit authoritative membership| C
+    C --> P1[Paper 1: fetch → reader → critic]
     C --> P2[Paper 2: fetch → reader → critic]
     C --> PN[Paper N: fetch → reader → critic]
     P1 --> G[All papers terminal]
@@ -1385,6 +1572,7 @@ flowchart TB
 src/arxiv_triage/
   models/
     investigation.py
+    screening.py
     corpus.py
     paper.py
     source.py
@@ -1395,6 +1583,7 @@ src/arxiv_triage/
   workflow/
     state.py
     guards.py
+    screening.py
     service.py
   storage/
     artifacts.py
@@ -1421,7 +1610,7 @@ scripts/
   render.py
 
 .claude/agents/
-  orchestrator.md
+  paper-screener.md
   paper-reader.md
   critic.md
   reviewer.md
@@ -1438,11 +1627,15 @@ The core commands are intentionally small:
 ```text
 uv run scripts/workflow.py create --spec <path> --profile <path> --search-plan <path>
 uv run scripts/workflow.py status <investigation-id>
-uv run scripts/fetch.py <investigation-id> <paper-id>
-uv run scripts/workflow.py prepare-reader <investigation-id> <paper-id>
-uv run scripts/workflow.py accept-run <agent-run-id>
-uv run scripts/workflow.py prepare-critic <investigation-id> <paper-id>
-uv run scripts/workflow.py prepare-reviewer <investigation-id>
+uv run scripts/workflow.py freeze-candidates <investigation-id> --candidate-set <path> --screening-scope <path> --search-complete
+uv run scripts/workflow.py prepare-screening <investigation-id> --batch-size <n>
+uv run scripts/workflow.py accept-run --task <path> --raw-output <path> --model <model>
+uv run scripts/workflow.py freeze-corpus <investigation-id> --mode <semantic|authoritative> --frozen-at <timestamp>
+uv run scripts/fetch_source.py <candidate-or-identity-path>
+uv run scripts/workflow.py prepare-reader <investigation-id> <paper-id> --agent-run-id <id> --focus <path>
+uv run scripts/workflow.py prepare-critic <investigation-id> <paper-id> --agent-run-id <id> --rubric <path>
+uv run scripts/rank.py <investigation-id>
+uv run scripts/workflow.py prepare-reviewer <investigation-id> --agent-run-id <id> --rubric <path>
 uv run scripts/render.py <investigation-id>
 uv run scripts/reconcile.py <investigation-id>
 uv run scripts/db.py rebuild

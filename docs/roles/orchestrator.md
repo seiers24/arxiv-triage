@@ -13,8 +13,9 @@ This is a human-readable authority definition. The executable procedure is
 ## Inputs and result
 
 The orchestrator receives an arXiv query, a selected objective profile, a
-search plan, and explicit positive limits for candidate count, screener batch
-size, fetch concurrency, agent concurrency, and concurrent paper chains.
+search plan, bounded discovery parameters that satisfy its completion rule,
+and explicit positive limits for screener batch size, fetch concurrency, agent
+concurrency, and concurrent paper chains.
 
 It produces a ranked brief plus the frozen corpus and sources, every raw model
 attempt, validated canonical artifacts, validation results, trace events,
@@ -27,13 +28,19 @@ terminal states, and rebuildable SQLite index needed to audit the run.
 - Invoke deterministic scripts for discovery, normalization, deduplication,
   hashing, source acquisition, extraction, validation, canonical persistence,
   indexing, ranking, and rendering.
-- Dispatch the paper screener in bounded batches only after its canonical
-  task/result contract and validator exist. Preserve exactly one decision for
-  every discovered candidate.
+- Freeze candidates only after the active search completion rule succeeds.
+  Provider failure cannot masquerade as a successful empty result.
+- Dispatch the paper screener in bounded, atomic batches only after its
+  canonical task/result contract, validator, and behavior review gate are
+  complete. Preserve exactly one decision for every frozen semantic candidate;
+  never salvage part of an invalid batch.
 - Map `selected` and `needs_review` to `included`; route both to source
   acquisition. Preserve `screened_out` as `excluded`. Reserve
-  `membership_unresolved` for discovery or identity cases that cannot be
-  routed.
+  `membership_unresolved` for deterministic identity failures and retain the
+  underlying screening decision.
+- Permit a workshop component to bypass semantic screening only when it
+  explicitly declares authoritative membership; include every listed paper.
+  Open discovery always uses semantic screening.
 - Dispatch paper readers and critics through bounded worker pools. Keep
   `source → reader → critic` ordered within a paper while allowing independent
   paper chains to progress concurrently.
@@ -51,6 +58,8 @@ terminal states, and rebuildable SQLite index needed to audit the run.
   or uncertain criticism as a visible `analysis_unresolved` outcome or
   human-review item, never as a retry trigger.
 - Continue independent paper chains when another paper fails.
+- If a screening batch exhausts its two attempts, allow independent in-flight
+  batches to finish, then fail the investigation without inventing decisions.
 - Open the reviewer barrier only after every frozen corpus entry has one final
   membership disposition and every included paper has one terminal analysis
   outcome.
@@ -106,8 +115,9 @@ The orchestrator must not:
 
 ## Scale and concurrency
 
-Candidate screening is batched. Parallelism is across paper chains, never
-within a paper's dependent stages. The explicit paper, fetch, and agent limits
+Candidate screening is batched, and the first slice screens every frozen
+semantic candidate without a post-freeze processing cap. Parallelism is across
+paper chains, never within a paper's dependent stages. The explicit paper, fetch, and agent limits
 are independent bounds; the effective dispatch limit is their applicable
 minimum. SQLite ingestion is serialized. A filesystem artifact is written in
 its unique run directory and promoted atomically only after validation.

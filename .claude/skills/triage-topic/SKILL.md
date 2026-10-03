@@ -11,29 +11,29 @@ delegate beyond the one worker level.
 
 ## Preflight gate
 
-The current investigation workflow is not runnable by assembling legacy
-commands. Before starting, confirm that all command entry points and canonical
+Before starting, confirm that all command entry points and canonical
 task/result validators named below exist and target the schema version declared
-by the frozen inputs. In particular, do not dispatch the
-paper screener until `ScreeningTask` and `ScreeningRecord` are defined and
-validated, and do not dispatch any worker without a finalized validator.
+by the frozen inputs. Do not dispatch any worker without a finalized validator.
 
 If an entry point or contract is absent, stop before the affected dispatch,
 preserve any already-created artifacts, and report that the workflow is not
-implemented at that gate. Never substitute `scripts/fetch.py`,
-`scripts/validate.py`, or `scripts/db.py` while they still implement legacy
-schema `1.0` behavior.
+implemented at that gate. Legacy entry points remain for compatibility; do not
+substitute them for the schema-2.0 commands listed here.
 
 The intended command surface is:
 
 ```text
 uv run scripts/workflow.py create --spec <path> --profile <path> --search-plan <path>
 uv run scripts/workflow.py status <investigation-id>
-uv run scripts/fetch.py <investigation-id> <paper-id>
-uv run scripts/workflow.py prepare-reader <investigation-id> <paper-id>
-uv run scripts/workflow.py accept-run <agent-run-id>
-uv run scripts/workflow.py prepare-critic <investigation-id> <paper-id>
-uv run scripts/workflow.py prepare-reviewer <investigation-id>
+uv run scripts/workflow.py freeze-candidates <investigation-id> --candidate-set <path> --screening-scope <path> --search-complete
+uv run scripts/workflow.py prepare-screening <investigation-id> --batch-size <n>
+uv run scripts/workflow.py accept-run --task <path> --raw-output <path> --model <model>
+uv run scripts/workflow.py freeze-corpus <investigation-id> --mode <semantic|authoritative> --frozen-at <timestamp>
+uv run scripts/fetch_source.py <candidate-or-identity-path>
+uv run scripts/workflow.py prepare-reader <investigation-id> <paper-id> --agent-run-id <id> --focus <path>
+uv run scripts/workflow.py prepare-critic <investigation-id> <paper-id> --agent-run-id <id> --rubric <path>
+uv run scripts/rank.py <investigation-id>
+uv run scripts/workflow.py prepare-reviewer <investigation-id> --agent-run-id <id> --rubric <path>
 uv run scripts/render.py <investigation-id>
 uv run scripts/reconcile.py <investigation-id>
 uv run scripts/db.py rebuild
@@ -50,7 +50,8 @@ Obtain before work begins:
 - a non-empty arXiv query;
 - paths to a schema-valid investigation spec, objective profile,
   and search plan;
-- a positive candidate limit and screener batch-size limit;
+- bounded discovery request parameters that satisfy the component completion
+  rule, plus a positive screener batch-size limit;
 - positive `max_concurrent_papers`, `max_concurrent_fetches`, and
   `max_concurrent_agents` values;
 - provider-specific retrieval attempt and timeout bounds;
@@ -75,32 +76,43 @@ paths. Let deterministic code validate structure and hashes and write the
 frozen snapshots. Do not edit a snapshot after creation. Record the resulting
 investigation ID and confirm `inputs_validated` with the status operation.
 
-### 2. Discover and freeze the corpus
+### 2. Discover, freeze candidates, screen, and freeze the corpus
 
 Invoke the active component's deterministic discovery operation with the exact
-query, candidate limit, and search plan. It owns provider retrieval,
+query, bounded retrieval parameters, and search plan. It owns provider retrieval,
 normalization, deduplication, stable paper identity, raw discovery records, and
 hashing. Do not screen or deduplicate by judgment in the orchestrator.
 
-Dispatch the paper screener only when its canonical task/result contract and
-validator are implemented. Partition candidates into batches no larger than
-the recorded batch limit. Preserve raw output and validation for every
-physical attempt. Require exactly one validated decision per candidate across
-the complete set; duplicates, omissions, or unknown candidates are contract
-failures, not material for manual repair.
+Do not freeze candidates unless the active search completion rule succeeds.
+Provider failure or exhausted discovery cannot be represented as a completed
+empty set. Freeze `candidates.json`, then partition it in order into stable,
+non-empty batches no larger than the recorded batch limit.
+
+In semantic mode, dispatch the paper screener only when its contract,
+validator, and behavior review gate are complete. Preserve raw output and
+validation for every physical attempt. Treat each batch atomically; do not
+salvage rows from an invalid response. Require exactly one validated decision
+per candidate across the complete set; duplicates, omissions, substitutions,
+reordering within a batch, or unknown candidates are contract failures.
 
 Map `selected` and `needs_review` to included membership and `screened_out` to
 excluded membership. `membership_unresolved` is reserved for deterministic
-discovery or identity failures. Freeze the complete deduplicated manifest and
-verify:
+identity failures and does not erase the screening decision. If a batch
+exhausts both attempts, allow independent in-flight batches to finish, then
+fail the investigation without synthesizing decisions.
+
+An active workshop component may bypass semantic screening only when it
+explicitly declares authoritative membership; include every listed paper.
+Open discovery always uses semantic screening. Freeze the complete
+deduplicated manifest and verify:
 
 ```text
 discovered = len(entries)
 discovered = included + excluded + membership_unresolved
 ```
 
-A processing cap may defer work visibly; it must not relabel a relevant or
-ambiguous candidate as excluded.
+The first slice has no post-freeze processing cap or deterministic hard-
+exclusion shortcut: every frozen semantic candidate receives a decision.
 
 ### 3. Prepare sources for included papers
 

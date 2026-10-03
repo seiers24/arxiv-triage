@@ -26,6 +26,9 @@ class ProjectionConflictError(RuntimeError):
     """Raised when an immutable projected row exists with different values."""
 
 
+INDEX_SCHEMA_VERSION = 2
+
+
 TABLE_ORDER = (
     "objective_profiles",
     "search_plans",
@@ -33,8 +36,11 @@ TABLE_ORDER = (
     "papers",
     "paper_identifiers",
     "source_documents",
+    "candidate_papers",
     "corpus_membership",
     "agent_runs",
+    "screening_records",
+    "screening_decisions",
     "reader_records",
     "claims",
     "critic_records",
@@ -48,6 +54,10 @@ TABLE_ORDER = (
 
 
 SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS index_metadata (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    index_schema_version INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS objective_profiles (
     profile_hash TEXT PRIMARY KEY, profile_id TEXT NOT NULL,
     schema_version TEXT NOT NULL, component TEXT NOT NULL, origin TEXT NOT NULL,
@@ -62,7 +72,8 @@ CREATE TABLE IF NOT EXISTS investigations (
     investigation_id TEXT PRIMARY KEY, schema_version TEXT NOT NULL,
     kind TEXT NOT NULL, question TEXT NOT NULL,
     status TEXT NOT NULL CHECK (status IN (
-        'draft','inputs_validated','discovering','corpus_frozen','analyzing',
+        'draft','inputs_validated','discovering','candidates_frozen','screening',
+        'corpus_frozen','analyzing',
         'reviewing','review_blocked','rendering','complete',
         'complete_with_warnings','failed')),
     spec_path TEXT NOT NULL UNIQUE, spec_hash TEXT NOT NULL,
@@ -93,6 +104,17 @@ CREATE TABLE IF NOT EXISTS source_documents (
     normalized_sha256 TEXT, retrieved_at TEXT NOT NULL, error TEXT,
     UNIQUE (paper_id, packet_hash)
 );
+CREATE TABLE IF NOT EXISTS candidate_papers (
+    investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
+    paper_id TEXT NOT NULL REFERENCES papers(paper_id),
+    candidate_index INTEGER NOT NULL CHECK (candidate_index >= 0),
+    candidate_hash TEXT NOT NULL,
+    abstract TEXT,
+    discovery_refs_json TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, paper_id),
+    UNIQUE (investigation_id, candidate_index),
+    UNIQUE (investigation_id, candidate_hash)
+);
 CREATE TABLE IF NOT EXISTS corpus_membership (
     investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id TEXT NOT NULL REFERENCES papers(paper_id), ordinal INTEGER NOT NULL,
@@ -108,8 +130,11 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     agent_run_id TEXT PRIMARY KEY,
     investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
     paper_id TEXT REFERENCES papers(paper_id),
-    role TEXT NOT NULL CHECK (role IN ('paper_reader','critic','reviewer')),
-    job_type TEXT NOT NULL, attempt_no INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 2),
+    screening_batch_id TEXT,
+    role TEXT NOT NULL CHECK (role IN ('paper_screener','paper_reader','critic','reviewer')),
+    job_type TEXT NOT NULL CHECK (job_type IN (
+        'paper_screen','paper_read','paper_critique','corpus_review')),
+    attempt_no INTEGER NOT NULL CHECK (attempt_no BETWEEN 1 AND 2),
     status TEXT NOT NULL CHECK (status IN (
         'running','output_received','invalid','completed','failed','interrupted')),
     model TEXT NOT NULL, agent_definition_hash TEXT NOT NULL,
@@ -121,10 +146,52 @@ CREATE TABLE IF NOT EXISTS agent_runs (
     canonical_path TEXT, canonical_hash TEXT, started_at TEXT NOT NULL,
     completed_at TEXT, duration_ms INTEGER, tokens_in INTEGER, tokens_out INTEGER,
     cost_usd REAL, error TEXT,
-    UNIQUE (investigation_id, paper_id, job_type, attempt_no)
+    CHECK (
+        (role = 'paper_screener' AND job_type = 'paper_screen'
+            AND paper_id IS NULL AND screening_batch_id IS NOT NULL)
+        OR (role = 'paper_reader' AND job_type = 'paper_read'
+            AND paper_id IS NOT NULL AND screening_batch_id IS NULL)
+        OR (role = 'critic' AND job_type = 'paper_critique'
+            AND paper_id IS NOT NULL AND screening_batch_id IS NULL)
+        OR (role = 'reviewer' AND job_type = 'corpus_review'
+            AND paper_id IS NULL AND screening_batch_id IS NULL)
+    )
 );
+CREATE UNIQUE INDEX IF NOT EXISTS one_paper_job_attempt
+ON agent_runs(investigation_id, paper_id, job_type, attempt_no)
+WHERE paper_id IS NOT NULL AND screening_batch_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS one_screening_batch_attempt
+ON agent_runs(investigation_id, screening_batch_id, job_type, attempt_no)
+WHERE paper_id IS NULL AND screening_batch_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS one_corpus_job_attempt
-ON agent_runs(investigation_id, job_type, attempt_no) WHERE paper_id IS NULL;
+ON agent_runs(investigation_id, job_type, attempt_no)
+WHERE paper_id IS NULL AND screening_batch_id IS NULL;
+CREATE TABLE IF NOT EXISTS screening_records (
+    investigation_id TEXT NOT NULL REFERENCES investigations(investigation_id),
+    screening_batch_id TEXT NOT NULL,
+    agent_run_id TEXT NOT NULL UNIQUE REFERENCES agent_runs(agent_run_id),
+    candidate_set_hash TEXT NOT NULL,
+    objective_profile_hash TEXT NOT NULL REFERENCES objective_profiles(profile_hash),
+    screening_scope_hash TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    artifact_path TEXT NOT NULL UNIQUE,
+    artifact_hash TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, screening_batch_id)
+);
+CREATE TABLE IF NOT EXISTS screening_decisions (
+    investigation_id TEXT NOT NULL,
+    screening_batch_id TEXT NOT NULL,
+    paper_id TEXT NOT NULL,
+    candidate_hash TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('selected','screened_out','needs_review')),
+    reason TEXT NOT NULL,
+    evidence_spans_json TEXT NOT NULL,
+    PRIMARY KEY (investigation_id, paper_id),
+    FOREIGN KEY (investigation_id, screening_batch_id)
+        REFERENCES screening_records(investigation_id, screening_batch_id),
+    FOREIGN KEY (investigation_id, paper_id)
+        REFERENCES candidate_papers(investigation_id, paper_id)
+);
 CREATE TABLE IF NOT EXISTS reader_records (
     reader_record_id TEXT PRIMARY KEY,
     agent_run_id TEXT NOT NULL UNIQUE REFERENCES agent_runs(agent_run_id),
@@ -212,7 +279,9 @@ CREATE TABLE IF NOT EXISTS review_evidence (
 CREATE INDEX IF NOT EXISTS idx_corpus_terminal
 ON corpus_membership(investigation_id, terminal_state);
 CREATE INDEX IF NOT EXISTS idx_runs_scope
-ON agent_runs(investigation_id, paper_id, job_type, status);
+ON agent_runs(investigation_id, paper_id, screening_batch_id, job_type, status);
+CREATE INDEX IF NOT EXISTS idx_screening_decisions_state
+ON screening_decisions(investigation_id, state);
 CREATE INDEX IF NOT EXISTS idx_claims_reader ON claims(reader_record_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_criterion ON objective_assessments(criterion_id);
 """
@@ -222,7 +291,19 @@ EXPECTED_SENTINELS: dict[str, frozenset[str]] = {
     "papers": frozenset({"paper_id", "schema_version", "identity_path", "identity_hash"}),
     "claims": frozenset({"claim_id", "reader_record_id", "source_quote"}),
     "agent_runs": frozenset(
-        {"agent_run_id", "input_path", "validation_hash", "canonical_hash"}
+        {
+            "agent_run_id",
+            "screening_batch_id",
+            "input_path",
+            "validation_hash",
+            "canonical_hash",
+        }
+    ),
+    "candidate_papers": frozenset(
+        {"investigation_id", "paper_id", "candidate_index", "candidate_hash"}
+    ),
+    "screening_records": frozenset(
+        {"investigation_id", "screening_batch_id", "agent_run_id"}
     ),
 }
 
@@ -257,6 +338,11 @@ class SQLiteIndex:
             connection = self.connect()
             self._reject_incompatible_existing_schema(connection)
             connection.executescript(SCHEMA_SQL)
+            connection.execute(
+                "INSERT OR IGNORE INTO index_metadata "
+                "(singleton, index_schema_version) VALUES (1, ?)",
+                (INDEX_SCHEMA_VERSION,),
+            )
             connection.commit()
 
     def close(self) -> None:
@@ -319,6 +405,7 @@ class SQLiteIndex:
             "agent_run_id",
             "investigation_id",
             "paper_id",
+            "screening_batch_id",
             "role",
             "job_type",
             "attempt_no",
@@ -423,6 +510,23 @@ class SQLiteIndex:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
+        tables.discard("sqlite_sequence")
+        if not tables:
+            return
+        if "index_metadata" not in tables:
+            raise StorageSchemaError(
+                "existing SQLite index has no index schema version; rebuild required"
+            )
+        versions = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT singleton, index_schema_version FROM index_metadata"
+            ).fetchall()
+        ]
+        if versions != [(1, INDEX_SCHEMA_VERSION)]:
+            raise StorageSchemaError(
+                "existing SQLite index schema version does not match; rebuild required"
+            )
         for table, sentinel_columns in EXPECTED_SENTINELS.items():
             if table not in tables:
                 continue

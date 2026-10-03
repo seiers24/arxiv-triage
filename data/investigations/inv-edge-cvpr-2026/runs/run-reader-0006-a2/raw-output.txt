@@ -1,0 +1,162 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0006-a2",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-422bb466fbdc5e02",
+  "source_document_id": "src-9ae7396d664b5911",
+  "input_hash": "275ad323d53bca7a7e5c24802d6429a8137ac0786c7ae6471402ba82036039ed",
+  "problem": "Blind face restoration must balance low distortion and perceptual realism while avoiding the latency and identity drift associated with iterative generative restoration.",
+  "method": "DirectFlow distills a multi-step rectified-flow teacher's transported posterior mean into a one-step latent-consistency student, using degradation-aware semantic conditioning, transport-adaptive LoRA, and a score-guided consistency loss.",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_kind": "problem",
+      "text": "The paper frames the perception-distortion trade-off as a central restoration problem: a distortion-minimizing estimator can leave the natural-image manifold and produce smooth, over-regularized outputs.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 18545,
+        "end_char": 18921,
+        "quote": "This estimator minimizes distortion but, according to the\nthe degradation, we introduce a parameter-efficient Semantic\nperception-distortion trade-off [3, 34], necessarily deviates\nAdapter. (1) Feature extraction. The low-quality input Y\nfrom the natural image manifold M, producing smooth,\nis processed by a frozen self-supervised vision transformer\nover-regularized outputs."
+      },
+      "evidence_modality": "theory",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-002",
+      "claim_kind": "method",
+      "text": "DirectFlow is designed to distill the transported posterior mean of a multi-step rectified-flow teacher into a single-step latent-consistency student.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 16238,
+        "end_char": 16529,
+        "quote": "We present DirectFlow, a framework designed to distill timal perceptual estimator. Distilling X † ensures the stu-\nthe transported posterior mean of a multi-step rectified dent inherits this mathematically favorable position on the\nflow teacher into a single-step latent consistency student."
+      },
+      "evidence_modality": "qualitative",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-003",
+      "claim_kind": "contribution",
+      "text": "The method introduces a parameter-efficient semantic adapter to condition transport on degradation geometry.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 18482,
+        "end_char": 18758,
+        "quote": "To explicitly condition the transport on the local geometry of\nThis estimator minimizes distortion but, according to the\nthe degradation, we introduce a parameter-efficient Semantic\nperception-distortion trade-off [3, 34], necessarily deviates\nAdapter. (1) Feature extraction."
+      },
+      "evidence_modality": "qualitative",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-004",
+      "claim_kind": "contribution",
+      "text": "The method introduces Transport-Adaptive Low-Rank Adaptation for the student network.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 22613,
+        "end_char": 22665,
+        "quote": "we introduce Transport-Adaptive\nLow-Rank Adaptation."
+      },
+      "evidence_modality": "qualitative",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-005",
+      "claim_kind": "method",
+      "text": "Score-Guided Consistency Loss uses the frozen teacher as a pixel-space distributional critic.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 22805,
+        "end_char": 23052,
+        "quote": "Inspired by Score Distillation Sampling [36], SGCL (Fig. 3)\nwhile completely freezing the heavy morphological condi- leverages the frozen teacher as a pixel-space distributional\ntioning prior. The morphological prior enforces rigid geomet- critic."
+      },
+      "evidence_modality": "qualitative",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-006",
+      "claim_kind": "result",
+      "text": "Table 1 reports DirectFlow at LPIPS 0.221, FID 40.96, MUSIQ 76.12, PSNR 25.24, SSIM 0.714, and 0.289 seconds, with additional results on LFW-Test, WebPhoto-Test, and WIDER-Test.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 26979,
+        "end_char": 27080,
+        "quote": "DirectFlow (Ours)⋆ 0.221 40.96 76.12 0.66/33.40 25.24 0.714 45.08 75.92 75.92 75.42 36.91 75.11 0.289"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-007",
+      "claim_kind": "result",
+      "text": "The inference-efficiency figure evaluates 512×512 restoration on an A6000 and labels DirectFlow as one NFE with 0.289-second latency.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 10274,
+        "end_char": 10601,
+        "quote": "Inference Efficiency (512x512, A6000)\n1.2 Row 1:\nNFE\nLatency (s) Heavy blur\n\n1.0\n50 50 7s Throughput 7.19\n(img/s)\n\nNormalized value (per metric)\n40\n0.8\nRow 2:\n\n0.6 Heavy noise\n25 3.46\n\n0.4 2.5s\n\nRow 3:\n1.77s\n1.45s\n0.2\nJPEG artifacts\n0.56 0.69\n0.4\n0.14 1 0.139s 1 0.289s\n0.0\nDifFace BFRffusion DiffBIR PMRF CodeFormer DirectFlow"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-008",
+      "claim_kind": "result",
+      "text": "On CelebA-Test, the full model reports PSNR 25.24, LPIPS 0.221, and FID 40.96; removing the DINOv2 adapter or SGCL worsens the reported LPIPS and FID values.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 31446,
+        "end_char": 31656,
+        "quote": "DirectFlow (Full) 25.24 0.221 40.96 Complete model\nw/o DINOv2 Adapter 24.98 0.232 44.18 No deg. awareness\nQuantitative Results. The quantitative evaluation on the w/o SGCL 25.07 0.228 42.63 No manifold guidance"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-009",
+      "claim_kind": "result",
+      "text": "The paper's carbon-accounting table lists total DirectFlow training as 192 A100 GPU-hours at 400 W, with 0.084 MWh and 0.033 tCO2e.",
+      "source_locator": {
+        "document_sha256": "f227900565abbfc28e44bc093a8ac784d066381bf418d15c96f1952b764d37bc",
+        "section_id": "sec-0001",
+        "start_char": 36738,
+        "end_char": 36781,
+        "quote": "DirectFlow (Total) A100 192 400 0.084 0.033"
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": [
+    "The normalized PDF text interleaves the two page columns in several passages and tables, so table-column assignments and prose surrounding some locators require critic verification against the same frozen source.",
+    "The supplied source reports an A6000 inference benchmark and A100 training accounting, but it does not report a deployment or latency measurement on a named edge-device target."
+  ]
+}

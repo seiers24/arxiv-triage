@@ -1,0 +1,99 @@
+{
+  "authoritative_url": "https://cvpr26-edge.github.io/",
+  "response_sha256": "62df9718a227075e69004d62b8f3bf35e7fbc2a1d4f6f52f988527ec91be6d54",
+  "declared_count": 15,
+  "long_count": 10,
+  "short_count": 5,
+  "entries": [
+    {
+      "title": "Token-Aligned Hierarchies for Lightweight Super-Resolution",
+      "authors": ["Jinendra Malekar", "Lingjia Shi", "Peyton Chandarana", "Ramtin Zand"],
+      "track_id": "long",
+      "poster_number": 56
+    },
+    {
+      "title": "CoReDiT: Spatial Coherence-Guided Token Pruning and Reconstruction for Efficient Diffusion Transformers",
+      "authors": ["Zhuojin Li", "Hsin-Pai Cheng", "Hong Cai", "Shizhong Han", "Fatih Porikli"],
+      "track_id": "long",
+      "poster_number": 56
+    },
+    {
+      "title": "Training-Free Layout-to-Image Generation with Marginal Attention Constraints",
+      "authors": ["Huancheng Chen", "Jingtao Li", "Weiming Zhuang", "Haris Vikalo", "Lingjuan Lyu"],
+      "track_id": "long",
+      "poster_number": 57
+    },
+    {
+      "title": "On the Limits of Token Reduction for Efficient Unified Vision Language Training",
+      "authors": ["Siyi Chen", "Weiming Zhuang", "Jingtao Li", "Lingjuan Lyu"],
+      "track_id": "long",
+      "poster_number": 57
+    },
+    {
+      "title": "ObjectAlign: Neuro-Symbolic Object Consistency Verification and Correction",
+      "authors": ["Mustafa Munir", "Harsh Goel", "Xiwen Wei", "Minkyu Choi", "Sahil Shah", "Kartikeya Bhardwaj", "Paul N. Whatmough", "Sandeep P. Chinchali", "Radu Marculescu"],
+      "track_id": "long",
+      "poster_number": 58
+    },
+    {
+      "title": "DirectFlow: One-Step Posterior Transport Distillation for Blind Face Restoration",
+      "authors": ["Eashan Adhikarla", "Brian D. Davison"],
+      "track_id": "long",
+      "poster_number": 58
+    },
+    {
+      "title": "A KL Lens on Quantization: Fast, Forward-Only Sensitivity for Mixed-Precision SSM–Transformer Models",
+      "authors": ["Jason Kong", "Nilesh Prasad Pandey", "Flavio Ponzina", "Tajana Rosing"],
+      "track_id": "long",
+      "poster_number": 59
+    },
+    {
+      "title": "Diagonal-Tiled Mixed-Precision Attention for Efficient Low-Bit MXFP Inference",
+      "authors": ["Yifu Ding", "Xinhao Zhang"],
+      "track_id": "long",
+      "poster_number": 59
+    },
+    {
+      "title": "A Spike-Gated Residual Unit for Information Flow Control in Transformers",
+      "authors": ["Kiran Nair", "Rodrigue Rizk", "KC Santosh"],
+      "track_id": "long",
+      "poster_number": 60
+    },
+    {
+      "title": "EdgeDiffusion: Latency-Optimized Diffusion Models for Real-Time On-Device Visual Anonymization",
+      "authors": ["Zihao Han", "Xueyan Gong", "Fengyi Wu", "Yifei Dong", "Jingqi Xu", "Jingdong Sun", "Feng Liu", "Siyu Huang", "Zhi-Qi Cheng"],
+      "track_id": "long",
+      "poster_number": 60
+    },
+    {
+      "title": "BlazeEdit: Generalist Image Editing on Mobile Devices with Image-to-Image Diffusion Models",
+      "authors": ["Fei Deng", "Yanwu Xu", "Zhipeng Bao", "Zhixing Zhang", "Haolin Jia", "Karthik Raveendran", "Jianing Wei"],
+      "track_id": "short",
+      "poster_number": 61
+    },
+    {
+      "title": "Energy-Adaptive Diffusion via Dynamic Token Pruning for Carbon-Efficient On-Device Generation",
+      "authors": ["Mahule Roy", "Subhas Roy"],
+      "track_id": "short",
+      "poster_number": 61
+    },
+    {
+      "title": "HLA: Hadamard Linear Attention",
+      "authors": ["Hanno Ackermann", "Hong Cai", "Mohsen Ghafoorian", "Amir Habibian"],
+      "track_id": "short",
+      "poster_number": 62
+    },
+    {
+      "title": "DDiT: Dynamic Patch Scheduling for Efficient Diffusion Transformers",
+      "authors": ["Dahye Kim", "Deepti Ghadiyaram", "Raghudeep Gadde"],
+      "track_id": "short",
+      "poster_number": 62
+    },
+    {
+      "title": "ELT: Elastic Looped Transformers for Visual Generation",
+      "authors": ["Sahil Goyal", "Swayam Agrawal", "Gautham Govind Anil", "Sujoy Paul", "Aditya Kusupati", "Prateek Jain"],
+      "track_id": "short",
+      "poster_number": 63
+    }
+  ]
+}

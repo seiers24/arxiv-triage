@@ -1,0 +1,14 @@
+{
+  "schema_version": "2.0",
+  "objective_profile_hash": "2890ca504aeee16a70c43a4f30ef912dc89cda9a20f519d5483a205656b371b8",
+  "top_tier_min_total": 4,
+  "criterion_minimums": {
+    "workshop_fit": 4,
+    "evidence_strength": 3,
+    "efficiency_result": 3,
+    "deployment_realism": 2,
+    "extension_leverage": 2
+  },
+  "exclude_uncertain": true,
+  "policy_hash": "d6b077a7a3cf5d8e5e2e63a4f0d4a033888f63e96d144149fe5cd3a4b56de1ce"
+}

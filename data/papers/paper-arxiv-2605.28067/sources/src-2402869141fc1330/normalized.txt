@@ -1,0 +1,495 @@
+Report GitHub Issue
+
+Content selection saved. Describe the issue below:
+
+Abstract
+
+1 Introduction
+
+2 Related Work
+
+3 Method
+
+3.1 Model Architecture
+
+3.2 Pretraining via Masked Reconstruction
+
+3.3 Multi-Task Finetuning and Distillation
+
+4 Experiments
+
+4.1 Tasks and Datasets
+
+4.2 Main Results
+
+5 Conclusion
+
+References
+
+BlazeEdit: Generalist Image Editing on Mobile Devices
+ with Image-to-Image Diffusion Models
+
+Abstract
+
+The remarkable generation quality of modern diffusion models often comes at the cost of massive parameter counts, which necessitate server-side inference with significant computational costs and potential privacy risks. Consequently, there is growing momentum toward developing efficient on-device alternatives. While recent efforts have optimized text-to-image models for mobile hardware, they remain relatively bulky, typically ranging from 0.5B to 1B parameters. We present BlazeEdit, a highly efficient, generalist image-to-image diffusion model tailored for on-device deployment. By identifying that many practical image editing tasks do not require text-based guidance, we eliminate the text-conditioning components and develop a multi-task architecture that consolidates object removal, outpainting, tone correction, relighting, and sticker generation into a single, compact model of only 195M parameters. BlazeEdit achieves a substantial reduction in download size and memory overhead while maintaining competitive generation quality. It completes a full inference pass in just 290ms on a Pixel 10, delivering a seamless, privacy-preserving, and lightning-fast experience for generalist image editing on the edge.
+
+1 Introduction
+
+Diffusion and flow-based generative models  [ 20 , 9 , 21 , 14 , 1 , 15 ] have achieved remarkable visual quality across a variety of digital content creation domains. However, many state-of-the-art diffusion models  [ 4 ] employ heavy multi-modal transformers whose parameter counts can reach up to 20B  [ 25 ] , requiring server-side inference on high-end GPUs/TPUs. This not only incurs significant computational costs, but also raises potential concerns regarding the privacy of uploaded personal photos.
+
+Consequently, there is growing interest in developing on-device diffusion models that can run locally and efficiently. Recent efforts, such as SnapFusion  [ 13 ] , SnapGen  [ 3 ] , and MobileDiffusion  [ 32 ] , have made impressive strides in reducing the denoiser size and latency for text-to-image generation. Nevertheless, these models remain relatively heavy, as the text encoder increases the total model size. For instance, SnapGen leverages multiple text encoders including CLIP  [ 17 ] and Gemma-2-2B  [ 22 ] , adding ∼ \sim 2B parameters to its 0.38B denoiser. The large model size often presents a download barrier for mobile applications, where bandwidth is frequently limited.
+
+In this paper, we challenge the prevailing assumption that a general-purpose mobile editing tool must be built upon a text-to-image foundation. We observe that a significant subset of common image editing actions, such as removing background objects, changing the aspect ratio of an image ( e.g . , portrait to square or landscape), and creating stylized stickers from photos, can be sufficiently guided by the input image plus a user-provided mask, bypassing the need for text-based conditioning.
+
+Building on this insight, we develop a pure image-to-image framework and introduce BlazeEdit, a highly efficient, generalist image editor tailored for mobile devices. Our contributions are summarized as follows:
+
+•
+
+We develop a pretraining pipeline specifically for image-to-image diffusion models. By leveraging masked reconstruction as the pretraining objective, we endow the base model with foundational inpainting and outpainting capabilities, facilitating data-efficient downstream finetuning.
+
+•
+
+We repurpose the mask value as a universal task indicator. Combined with a jointly trained image-and-mask encoder, this allows for simultaneous multi-task finetuning that enables knowledge transfer across tasks.
+
+•
+
+We achieve a single, compact model of only 195M parameters that consolidates five distinct editing tasks—object removal, outpainting, tone correction, relighting, and sticker generation. With an inference latency of just 290ms on a Pixel 10, our model delivers a highly interactive user experience.
+
+2 Related Work
+
+There have been significant recent advancements in developing generalist text-to-image diffusion models that unify diverse, multi-modal editing tasks within single architectures  [ 27 , 12 , 5 , 26 , 25 , 16 , 31 , 28 ] . However, their reliance on heavy multi-modal transformers and massive parameter counts renders them impractical for on-device execution. A growing body of research has focused on compressing text-to-image diffusion models for mobile devices. Pioneering works such as SnapFusion  [ 13 ] , SnapGen  [ 3 ] , and MobileDiffusion  [ 32 ] have significantly reduced the model parameters to the 0.5B ∼ \sim 1B range through extensive architectural investigation and advanced distillation. Our work further shrinks the model size by shifting to an image-to-image framework that still supports a wide variety of practical editing tasks. Compared to the pixel-space image-to-image framework presented in Palette  [ 19 ] , our model works in latent space and introduces a task-agnostic pretraining phase, enabling fast inference and data-efficient finetuning.
+
+3 Method
+
+3.1 Model Architecture
+
+Figure  1 presents an overview of the BlazeEdit framework. We detail our design below.
+
+Latent Diffusion with Jointly Trained Encoder. 
+Following established practice, we adopt latent diffusion  [ 18 ] to reduce the computational overhead of the iterative denoising process. Given a frozen encoder ℰ \mathcal{E} and decoder 𝒟 \mathcal{D} , we seek to train a denoiser ϵ θ \epsilon_{\theta} that models the conditional distribution p ⁡ ( ℰ ⁡ ( 𝐲 ) ∣ 𝐱 , 𝐦 ) p(\mathcal{E}(\mathbf{y})\mid\mathbf{x},\mathbf{m}) , where 𝐱 \mathbf{x} , 𝐲 \mathbf{y} , 𝐦 \mathbf{m} denote the input image, output image, and mask, respectively. The prevailing approach in pixel-space image-to-image frameworks, such as Palette  [ 19 ] , provides the masked image as a conditioning input to the denoiser. However, we find this approach suboptimal when adapted to the latent space. Specifically, if the conditioning input is simply changed to the latent representation of the masked image ℰ ⁡ ( 𝐦 ⊙ 𝐱 ) \mathcal{E}(\mathbf{m}\odot\mathbf{x}) , the denoiser will struggle to preserve structural fidelity around the masked region, especially for object removal. This happens even if the autoencoder has no difficulty reconstructing the masked image, i.e . , 𝒟 ⁡ ( ℰ ⁡ ( 𝐦 ⊙ 𝐱 ) ) ≈ 𝐦 ⊙ 𝐱 \mathcal{D}(\mathcal{E}(\mathbf{m}\odot\mathbf{x}))\approx\mathbf{m}\odot\mathbf{x} . We attribute this to the suboptimal latent representations. Since the autoencoder is optimized mainly for reconstruction, its latent space is not inherently structured to decouple the original image content from the superimposed mask.
+
+To address this, BlazeEdit introduces a secondary, trainable encoder f θ ​ ( concat ​ [ 𝐱 , 𝐦 ] ) f_{\theta}(\texttt{concat}[\mathbf{x},\mathbf{m}]) that processes the concatenated input image and mask. The output of f θ f_{\theta} is fed to the denoiser as a conditioning input. Unlike the frozen, reconstruction-oriented autoencoder, f θ f_{\theta} is jointly optimized with the denoiser to extract task-relevant features that the model can more easily leverage. We find this joint training critical for maintaining fine-grained details and structural integrity. Furthermore, for object removal tasks where the mask specifies the object to be removed, providing f θ f_{\theta} with the full input image 𝐱 \mathbf{x} allows the model to more effectively infer and eliminate shadows cast by the object.
+
+Efficient Denoiser and Lightweight Decoder. 
+The denoiser follows the U-ViT architecture  [ 10 ] . Specifically, we employ ResNet  [ 8 ] blocks at higher resolutions to maintain the spatial inductive bias while saving memory, and self-attention  [ 23 ] blocks at lower resolutions to capture long-range dependencies and improve accelerator utilization. To further reduce model size and inference latency, we prune the width and depth of the decoder 𝒟 \mathcal{D} . We then train it for image reconstruction with the encoder ℰ \mathcal{E} frozen, following MobileDiffusion  [ 32 ] . The resulting lightweight decoder has only 6M parameters, and shows minimal degradation in reconstruction quality.
+
+3.2 Pretraining via Masked Reconstruction
+
+A significant bottleneck in developing a generalist image editor is the scarcity of high-quality, task-specific datasets. Existing literature typically follows one of two paths: (1) adapting a pretrained text-to-image model by adding task-specific LoRAs  [ 11 , 32 ] , or (2) training an image-to-image model from scratch but limited to a small number of tasks, such as colorization and JPEG restoration  [ 19 ] , where massive paired data can be easily synthesized. The first approach inevitably involves parameters for text understanding and text-image alignment, which are unnecessary for purely image-conditioned tasks. On the other hand, the second approach struggles to scale to more complex editing tasks where the training data are costly to obtain.
+
+To achieve data-efficient scaling across diverse editing tasks while maintaining a compact model footprint, we propose to first pretrain an image-to-image base model from scratch on large-scale task-agnostic datasets, and then finetune it jointly on all available task-specific datasets.
+
+Inspired by the masked image modeling framework  [ 7 , 2 ] , we use masked reconstruction as our pretraining objective. We find it critical to employ a diverse set of masks, including random patches, geometric shapes, and strokes within the image, and paddings on the boundary of the image. This not only encourages the model to learn an expressive image representation, but also equips the model with core inpainting and outpainting capabilities, building a generalizable foundation for specialized downstream tasks.
+
+We directly leverage the images from existing large-scale text-to-image datasets for our pretraining. The loss function can be written as:
+
+where ϵ ∼ 𝒩 ⁡ ( 𝟎 , 𝟏 ) \bm{\epsilon}\sim\mathcal{N}(\bm{0},\bm{1}) denotes the random noise, and 𝐱 ~ t \tilde{\mathbf{x}}_{t} is the noised version of ℰ ⁡ ( 𝐱 ) \mathcal{E}(\mathbf{x}) at a randomly sampled diffusion step t t . The mask 𝐦 \mathbf{m} is randomly generated on the fly. To prevent degenerate solutions caused by information leak, we mask the image 𝐱 \mathbf{x} when feeding it to the trainable encoder f θ f_{\theta} . This is only necessary during pretraining.
+
+3.3 Multi-Task Finetuning and Distillation
+
+Following pretraining on large-scale, general-purpose image data, we transition to supervised finetuning and step distillation on task-specific datasets.
+
+Universal Task Signaling. 
+We conduct multi-task finetuning on all available downstream tasks simultaneously, as this enables knowledge transfer across tasks. To help the model distinguish between different tasks, we introduce a universal task signaling mechanism encoded directly within the mask values. Specifically, each task i i is assigned a unique numerical constant τ i \tau_{i} , which is used to scale the binary mask 𝐦 \mathbf{m} . This mask-based conditioning signal allows the model to switch functional modes dynamically without additional parameters. For an input-mask-output triplet ( 𝐱 , 𝐦 , 𝐲 ) (\mathbf{x},\mathbf{m},\mathbf{y}) belonging to task i i , the finetuning objective is formulated as:
+
+where ϵ ∼ 𝒩 ⁡ ( 𝟎 , 𝟏 ) \bm{\epsilon}\sim\mathcal{N}(\bm{0},\bm{1}) denotes the random noise, and 𝐲 ~ t \tilde{\mathbf{y}}_{t} is the noised version of ℰ ⁡ ( 𝐲 ) \mathcal{E}(\mathbf{y}) at a randomly sampled diffusion step t t .
+
+Adversarial Distribution Matching Distillation. 
+After supervised finetuning, we distill the resulting model for 2-step inference, significantly reducing latency. We find that distribution matching distillation  [ 30 ] combined with adversarial training  [ 29 ] works well in this few-step regime.
+
+4 Experiments
+
+4.1 Tasks and Datasets
+
+We first describe the range of image editing tasks supported by BlazeEdit and the task-specific finetuning datasets.
+
+Object Removal 
+aims to remove a user-specified object from a scene and synthesize a plausible background in its place, helping to reduce visual clutter. We use a manually curated dataset of ∼ \sim 20K image pairs. Following [ 24 ] , each pair captures a scene before and after an object is physically removed while minimizing other changes.
+
+Outpainting 
+extends the boundaries of an image, which is useful for changing its aspect ratio ( e.g . , portrait to landscape). We use a high-quality subset of ∼ \sim 5K images from our pretraining datasets, filtered for aesthetic and diversity.
+
+Tone Correction 
+enhances an image by refining its white balance, saturation, and exposure. We synthesize a dataset of ∼ \sim 3M image pairs by a high-performance teacher model.
+
+Relighting 
+focuses on portrait enhancement by mitigating unfavorable lighting, such as harsh facial shadows. We use a dataset of ∼ \sim 100K image pairs synthesized by applying diverse shadow augmentations to portrait photography  [ 6 ] .
+
+Sticker Generation 
+stylizes user-specified subjects within an image ( e.g . , people, pets, and objects), transforming them into high-quality artistic stickers. We synthesize a diverse dataset of ∼ \sim 100K image pairs using a high-capacity text-to-image generation model adept at identity-preserving stylization.
+
+4.2 Main Results
+
+Qualitative Results. 
+In Figure  2 , we present the input images and generation samples from BlazeEdit on all five tasks. BlazeEdit achieves compelling and versatile image-to-image editing. It exhibits strong structural reasoning and semantic preservation, seamlessly handling object and shadow removal, boundary extrapolation, stylization, tone correction, and lighting adjustment.
+
+Efficiency Evaluation. 
+In Table  1 , we compare the model footprint of BlazeEdit with prior works. BlazeEdit achieves 2 × \times reduction in denoiser parameter count while eliminating the text encoders, which typically range from 0.1B to 2B parameters. Furthermore, Table  2 provides a breakdown of inference latency on Pixel 10 using Edge TPU. BlazeEdit completes a full inference pass in just 290ms, enabling lightning-fast and privacy-preserving image editing directly on the edge.
+
+5 Conclusion
+
+We presented BlazeEdit, a highly efficient image-to-image diffusion model designed for edge-native generalist image editing. We successfully consolidated five diverse editing tasks into a unified 195M-parameter architecture. Our experiments demonstrate that BlazeEdit achieves competitive results while delivering highly interactive user experience on mobile hardware.
+
+Acknowledgements
+
+We thank Julius Kammerl, Daniel Fenner, Lutz Justen, Florian Kübler, Ronald Wotzlaw, Steven Toribio, Weiyi Wang, Marissa Ikonomidis, Lu Wang, Juhyun Lee, Zahra Koochak, Gregory Karpiak, Renjie Wu, Joe Zou, Pauline Sho, and Advait Jain for their essential support with on-device pipeline implementation, model export, quantization, and performance optimization. We also appreciate Yang Zhao, Zhisheng Xiao, Oliver Wang, Dana Berman, Dani Lischinski, Ron Shapiro, Tomer Golany, Alex Rav Acha, Michael Milne, Gilles Roux, Zarana Parekh, James Vecore, Jason Chang, Mogan Shieh, and Chris Parsons for their valuable insights and data support.
+
+References
+
+[1] 
+ M. S. Albergo and E. Vanden-Eijnden (2023) 
+ 
+ Building normalizing flows with stochastic interpolants .
+ 
+ In International Conference on Learning Representations ,
+ 
+ External Links: Link 
+ 
+ Cited by: §1 .
+
+[2] 
+ H. Chang, H. Zhang, L. Jiang, C. Liu, and W. T. Freeman (2022) 
+ 
+ MaskGIT: masked generative image transformer .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 11315–11325 .
+ 
+ Cited by: §3.2 .
+
+[3] 
+ J. Chen, D. Hu, X. Huang, H. Coskun, A. Sahni, A. Gupta, A. Goyal, D. Lahiri, R. Singh, Y. Idelbayev, J. Cao, Y. Li, K. Cheng, S.-H. G. Chan, M. Gong, S. Tulyakov, A. Kag, Y. Xu, and J. Ren (2025) 
+ 
+ SnapGen: taming high-resolution text-to-image models for mobile devices with efficient architectures and training .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 7997–8008 .
+ 
+ Cited by: §1 ,
+ §2 ,
+ Table 1 .
+
+[4] 
+ P. Esser, S. Kulal, A. Blattmann, R. Entezari, J. Müller, H. Saini, Y. Levi, D. Lorenz, A. Sauer, F. Boesel, D. Podell, T. Dockhorn, Z. English, and R. Rombach (2024) 
+ 
+ Scaling rectified flow transformers for high-resolution image synthesis .
+ 
+ In International Conference on Machine Learning ,
+ 
+ External Links: Link 
+ 
+ Cited by: §1 .
+
+[5] 
+ T. Fu, Y. Qian, C. Chen, W. Hu, Z. Gan, and Y. Yang (2025) 
+ 
+ UniVG: a generalist diffusion model for unified image generation and editing .
+ 
+ In Proceedings of the IEEE/CVF International Conference on Computer Vision ,
+ 
+ pp. 17160–17170 .
+ 
+ Cited by: §2 .
+
+[6] 
+ D. Futschik, K. Ritland, J. Vecore, S. Fanello, S. Orts-Escolano, B. Curless, D. Sỳkora, and R. Pandey (2023) 
+ 
+ Controllable light diffusion for portraits .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 8412–8421 .
+ 
+ Cited by: §4.1 .
+
+[7] 
+ K. He, X. Chen, S. Xie, Y. Li, P. Dollár, and R. Girshick (2022) 
+ 
+ Masked autoencoders are scalable vision learners .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 16000–16009 .
+ 
+ Cited by: §3.2 .
+
+[8] 
+ K. He, X. Zhang, S. Ren, and J. Sun (2016) 
+ 
+ Deep residual learning for image recognition .
+ 
+ In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 770–778 .
+ 
+ Cited by: §3.1 .
+
+[9] 
+ J. Ho, A. Jain, and P. Abbeel (2020) 
+ 
+ Denoising diffusion probabilistic models .
+ 
+ In Advances in Neural Information Processing Systems ,
+ 
+ Cited by: §1 .
+
+[10] 
+ E. Hoogeboom, J. Heek, and T. Salimans (2023) 
+ 
+ simple diffusion: end-to-end diffusion for high resolution images .
+ 
+ In International Conference on Machine Learning ,
+ 
+ Cited by: §3.1 .
+
+[11] 
+ E. J. Hu, yelong shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen (2022) 
+ 
+ LoRA: low-rank adaptation of large language models .
+ 
+ In International Conference on Learning Representations ,
+ 
+ External Links: Link 
+ 
+ Cited by: §3.2 .
+
+[12] 
+ D. H. Le, T. Pham, S. Lee, C. Clark, A. Kembhavi, S. Mandt, R. Krishna, and J. Lu (2025) 
+ 
+ One diffusion to generate them all .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 2671–2682 .
+ 
+ Cited by: §2 .
+
+[13] 
+ Y. Li, H. Wang, Q. Jin, J. Hu, P. Chemerys, Y. Fu, Y. Wang, S. Tulyakov, and J. Ren (2023) 
+ 
+ SnapFusion: text-to-image diffusion model on mobile devices within two seconds .
+ 
+ In Advances in Neural Information Processing Systems ,
+ 
+ Cited by: §1 ,
+ §2 ,
+ Table 1 .
+
+[14] 
+ Y. Lipman, R. T. Q. Chen, H. Ben-Hamu, M. Nickel, and M. Le (2023) 
+ 
+ Flow matching for generative modeling .
+ 
+ In International Conference on Learning Representations ,
+ 
+ External Links: Link 
+ 
+ Cited by: §1 .
+
+[15] 
+ X. Liu, C. Gong, and Q. Liu (2023) 
+ 
+ Flow straight and fast: learning to generate and transfer data with rectified flow .
+ 
+ In International Conference on Learning Representations ,
+ 
+ External Links: Link 
+ 
+ Cited by: §1 .
+
+[16] 
+ C. Qin, S. Zhang, N. Yu, Y. Feng, X. Yang, Y. Zhou, H. Wang, J. C. Niebles, C. Xiong, S. Savarese, S. Ermon, Y. Fu, and R. Xu (2023) 
+ 
+ UniControl: a unified diffusion model for controllable visual generation in the wild .
+ 
+ In Advances in Neural Information Processing Systems ,
+ 
+ Cited by: §2 .
+
+[17] 
+ A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, G. Krueger, and I. Sutskever (2021) 
+ 
+ Learning transferable visual models from natural language supervision .
+ 
+ In International Conference on Machine Learning ,
+ 
+ Cited by: §1 .
+
+[18] 
+ R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer (2022) 
+ 
+ High-resolution image synthesis with latent diffusion models .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 10684–10695 .
+ 
+ Cited by: §3.1 .
+
+[19] 
+ C. Saharia, W. Chan, H. Chang, C. Lee, J. Ho, T. Salimans, D. Fleet, and M. Norouzi (2022) 
+ 
+ Palette: image-to-image diffusion models .
+ 
+ In ACM SIGGRAPH 2022 Conference Proceedings ,
+ 
+ pp. 1–10 .
+ 
+ Cited by: §2 ,
+ §3.1 ,
+ §3.2 .
+
+[20] 
+ J. Sohl-Dickstein, E. Weiss, N. Maheswaranathan, and S. Ganguli (2015) 
+ 
+ Deep unsupervised learning using nonequilibrium thermodynamics .
+ 
+ In International Conference on Machine Learning ,
+ 
+ Cited by: §1 .
+
+[21] 
+ Y. Song, J. Sohl-Dickstein, D. P. Kingma, A. Kumar, S. Ermon, and B. Poole (2021) 
+ 
+ Score-based generative modeling through stochastic differential equations .
+ 
+ In International Conference on Learning Representations ,
+ 
+ Cited by: §1 .
+
+[22] 
+ G. Team, M. Riviere, S. Pathak, P. G. Sessa, C. Hardin, S. Bhupatiraju, L. Hussenot, T. Mesnard, B. Shahriari, A. Ramé, J. Ferret, P. Liu, P. Tafti, A. Friesen, M. Casbon, S. Ramos, R. Kumar, C. L. Lan, S. Jerome, A. Tsitsulin, N. Vieillard, P. Stanczyk, S. Girgin, N. Momchev, M. Hoffman, S. Thakoor, J. Grill, B. Neyshabur, O. Bachem, A. Walton, A. Severyn, A. Parrish, A. Ahmad, A. Hutchison, A. Abdagic, A. Carl, A. Shen, A. Brock, A. Coenen, A. Laforge, A. Paterson, B. Bastian, B. Piot, B. Wu, B. Royal, C. Chen, C. Kumar, C. Perry, C. Welty, C. A. Choquette-Choo, D. Sinopalnikov, D. Weinberger, D. Vijaykumar, D. Rogozińska, D. Herbison, E. Bandy, E. Wang, E. Noland, E. Moreira, E. Senter, E. Eltyshev, F. Visin, G. Rasskin, G. Wei, G. Cameron, G. Martins, H. Hashemi, H. Klimczak-Plucińska, H. Batra, H. Dhand, I. Nardini, J. Mein, J. Zhou, J. Svensson, J. Stanway, J. Chan, J. P. Zhou, J. Carrasqueira, J. Iljazi, J. Becker, J. Fernandez, J. van Amersfoort, J. Gordon, J. Lipschultz, J. Newlan, J. Ji, K. Mohamed, K. Badola, K. Black, K. Millican, K. McDonell, K. Nguyen, K. Sodhia, K. Greene, L. L. Sjoesund, L. Usui, L. Sifre, L. Heuermann, L. Lago, L. McNealus, L. B. Soares, L. Kilpatrick, L. Dixon, L. Martins, M. Reid, M. Singh, M. Iverson, M. Görner, M. Velloso, M. Wirth, M. Davidow, M. Miller, M. Rahtz, M. Watson, M. Risdal, M. Kazemi, M. Moynihan, M. Zhang, M. Kahng, M. Park, M. Rahman, M. Khatwani, N. Dao, N. Bardoliwalla, N. Devanathan, N. Dumai, N. Chauhan, O. Wahltinez, P. Botarda, P. Barnes, P. Barham, P. Michel, P. Jin, P. Georgiev, P. Culliton, P. Kuppala, R. Comanescu, R. Merhej, R. Jana, R. A. Rokni, R. Agarwal, R. Mullins, S. Saadat, S. M. Carthy, S. Cogan, S. Perrin, S. M. R. Arnold, S. Krause, S. Dai, S. Garg, S. Sheth, S. Ronstrom, S. Chan, T. Jordan, T. Yu, T. Eccles, T. Hennigan, T. Kocisky, T. Doshi, V. Jain, V. Yadav, V. Meshram, V. Dharmadhikari, W. Barkley, W. Wei, W. Ye, W. Han, W. Kwon, X. Xu, Z. Shen, Z. Gong, Z. Wei, V. Cotruta, P. Kirk, A. Rao, M. Giang, L. Peran, T. Warkentin, E. Collins, J. Barral, Z. Ghahramani, R. Hadsell, D. Sculley, J. Banks, A. Dragan, S. Petrov, O. Vinyals, J. Dean, D. Hassabis, K. Kavukcuoglu, C. Farabet, E. Buchatskaya, S. Borgeaud, N. Fiedel, A. Joulin, K. Kenealy, R. Dadashi, and A. Andreev (2024) 
+ 
+ Gemma 2: improving open language models at a practical size .
+ 
+ External Links: 2408.00118 ,
+ Link 
+ 
+ Cited by: §1 .
+
+[23] 
+ A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin (2017) 
+ 
+ Attention is all you need .
+ 
+ In Advances in neural information processing systems ,
+ 
+ Cited by: §3.1 .
+
+[24] 
+ D. Winter, M. Cohen, S. Fruchter, Y. Pritch, A. Rav-Acha, and Y. Hoshen (2024) 
+ 
+ ObjectDrop: bootstrapping counterfactuals for photorealistic object removal and insertion .
+ 
+ In European Conference on Computer Vision ,
+ 
+ pp. 112–129 .
+ 
+ Cited by: §4.1 .
+
+[25] 
+ C. Wu, J. Li, J. Zhou, J. Lin, K. Gao, K. Yan, S. Yin, S. Bai, X. Xu, Y. Chen, Y. Chen, Z. Tang, Z. Zhang, Z. Wang, A. Yang, B. Yu, C. Cheng, D. Liu, D. Li, H. Zhang, H. Meng, H. Wei, J. Ni, K. Chen, K. Cao, L. Peng, L. Qu, M. Wu, P. Wang, S. Yu, T. Wen, W. Feng, X. Xu, Y. Wang, Y. Zhang, Y. Zhu, Y. Wu, Y. Cai, and Z. Liu (2025) 
+ 
+ Qwen-Image technical report .
+ 
+ External Links: 2508.02324 ,
+ Link 
+ 
+ Cited by: §1 ,
+ §2 .
+
+[26] 
+ B. Xia, Y. Zhang, J. Li, C. Wang, Y. Wang, X. Wu, B. Yu, and J. Jia (2025) 
+ 
+ DreamOmni: unified image generation and editing .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 28533–28543 .
+ 
+ Cited by: §2 .
+
+[27] 
+ S. Xiao, Y. Wang, J. Zhou, H. Yuan, X. Xing, R. Yan, C. Li, S. Wang, T. Huang, and Z. Liu (2025) 
+ 
+ OmniGen: unified image generation .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 13294–13304 .
+ 
+ Cited by: §2 .
+
+[28] 
+ X. Xu, Z. Wang, G. Zhang, K. Wang, and H. Shi (2023) 
+ 
+ Versatile Diffusion: text, images and variations all in one diffusion model .
+ 
+ In Proceedings of the IEEE/CVF International Conference on Computer Vision ,
+ 
+ pp. 7754–7765 .
+ 
+ Cited by: §2 .
+
+[29] 
+ T. Yin, M. Gharbi, T. Park, R. Zhang, E. Shechtman, F. Durand, and B. Freeman (2024) 
+ 
+ Improved distribution matching distillation for fast image synthesis .
+ 
+ In Advances in neural information processing systems ,
+ 
+ Cited by: §3.3 .
+
+[30] 
+ T. Yin, M. Gharbi, R. Zhang, E. Shechtman, F. Durand, W. T. Freeman, and T. Park (2024) 
+ 
+ One-step diffusion with distribution matching distillation .
+ 
+ In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition ,
+ 
+ pp. 6613–6623 .
+ 
+ Cited by: §3.3 .
+
+[31] 
+ S. Zhao, D. Chen, Y. Chen, J. Bao, S. Hao, L. Yuan, and K. K. Wong (2023) 
+ 
+ Uni-ControlNet: all-in-one control to text-to-image diffusion models .
+ 
+ In Advances in neural information processing systems ,
+ 
+ Cited by: §2 .
+
+[32] 
+ Y. Zhao, Y. Xu, Z. Xiao, H. Jia, and T. Hou (2024) 
+ 
+ MobileDiffusion: instant text-to-image generation on mobile devices .
+ 
+ In European Conference on Computer Vision ,
+ 
+ pp. 225–242 .
+ 
+ Cited by: §1 ,
+ §2 ,
+ §3.1 ,
+ §3.2 ,
+ Table 1 .
+
+Instructions for reporting errors
+
+We are continuing to improve HTML versions of papers, and your feedback helps enhance accessibility and mobile
+ support. To report errors in the HTML that will help us improve conversion and rendering, choose any of the
+ methods listed below:
+
+Click the "Report Issue" ( ) button, located in the page header.
+
+Tip: You can select the relevant text first, to include it in your report.
+
+Our team has already identified the following issues . We appreciate your time reviewing and reporting rendering errors we
+ may not have found yet. Your efforts will help us improve the HTML versions for all readers, because disability
+ should not be a barrier to accessing research. Thank you for your continued support in championing open access for
+ all.
+
+Have a free development cycle? Help support accessibility at arXiv! Our collaborators at LaTeXML maintain a list of packages that need conversion , and welcome developer contributions .

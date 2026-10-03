@@ -26,7 +26,8 @@ the task identities and hashes. Use `source_text` directly; do not dereference
 `source_packet.normalized_path`. The task does not authorize access to hidden
 reader reasoning, preliminary ranking, reviewer opinion, or a desired result.
 
-Treat the task as immutable. A component rubric may explain how to apply a
+Treat the task as immutable. Apply `critic_rubric.checks` in their supplied
+order. A component rubric may explain how to apply a
 declared objective criterion; it cannot weaken source support, provenance,
 evidence-classification, or uncertainty rules.
 

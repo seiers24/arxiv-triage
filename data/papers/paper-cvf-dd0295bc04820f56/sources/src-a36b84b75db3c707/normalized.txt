@@ -1,0 +1,600 @@
+This CVPR Workshop paper is the Open Access version, provided by the Computer Vision
+Foundation. Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+
+On the Limits of Token Reduction for Efficient Unified Vision Language Training
+
+Siyi Chen1 * Weiming Zhuang2 Jingtao Li2 Lingjuan lv2
+1 2
+University of Michigan Sony AI
+
+Abstract visual understanding do not account for the distinct struc-
+tural requirements of visual generation, nor do they study
+Unified vision-language models (VLMs) integrate visual the complexities inherent in unifying generative and dis-
+understanding and visual generation within a single au- criminative objectives within a single VLM.
+toregressive backbone, but their joint training is computa- In this paper, we investigate the feasibility and limits of
+tionally expensive and largely overlooked from an efficiency accelerating the training of unified vision language models.
+perspective. In this work, we study the feasibility and lim- We adopt the pure autoregressive framework as our testbed,
+its of token-reduction-based acceleration for unified VLM as it represents one of the most prevalent architectures for
+training. Through a systematic analysis of layerwise atten- integrating multimodal capabilities [9, 14, 23, 36, 39, 41–
+tion allocation, we uncover a fundamental asymmetry: vi- 43]. Through an analysis of the attention dynamics within
+sual understanding exhibits substantial late-layer visual re- this framework (in Figure 2), we reveal a critical asymme-
+dundancy, whereas visual generation maintains persistent try in task-specific redundancy: while visual understanding
+dependence on image tokens across depth. Guided by this tasks exhibit high token redundancy in the deeper layers,
+observation, we design task-specific accelerators that selec- visual generation depends heavily on the context of pre-
+tively reduce image-token computation for each objective. viously generated image tokens within many deep layers.
+While these methods achieve significant efficiency gains in Building on these insights, we develop task-specific strate-
+isolated settings, we observe a consistent synergy loss un- gies to accelerate training by selectively dropping image to-
+der unified training—task-specific token dropping neces- kens tailored to the unique requirements of each objective.
+sitates divergent parameter pathways and eliminates the Furthermore, we reveal a critical ”synergy loss” phe-
+mutual performance gains typically observed in joint opti- nomenon that occurs when task-specific token reduction
+mization. Our findings suggest that efficient unified model- methods are applied to the joint training of unified mod-
+ing requires preserving shared cross-task structures, high- els. We find that task-specific token dropping disrupts the
+lighting the need for synergy-aware acceleration strategies. inherent synergy between understanding and generation by:
+Project page: https://chicychen.github.io/ (1) necessitating divergent sets of image-related model pa-
+TokenReductionUnifiedVLM/. rameters, and (2) eliminating the mutual performance gains
+typically observed when both tasks are trained concurrently.
+1. Introduction Our diagnostic analysis suggests that aggressive token drop-
+ping amplifies task conflicts, offering a cautionary lesson
+Unified Vision-Language Models (VLMs) [11, 25, 26, 36, and a new perspective for future research in efficient unified
+38, 39] integrate visual generation [6, 7, 29, 33] and un- modeling. Our contributions are summarized as follows:
+derstanding [4, 21, 22, 27] within a single model and have
+demonstrated remarkable scalability and cross-task poten- • Unified Redundancy Analysis: We characterize task-
+tial [32, 37, 39]. However, the training of these models specific attention patterns in unified VLMs, identifying
+is prohibitively expensive; for instance, VILA-U [39] re- distinct redundancy zones.
+quires approximately 20K A100 GPU hours. While many • Task-Specific Accelerators: We design and implement
+prior methods propose to reduce inference-time computa- training-time acceleration for isolated tasks.
+tion in understanding-only VLMs via token pruning or spe- • Discovery of Synergy Loss: We discover that task-
+cial attention masks [1, 3, 12, 24, 28, 30, 44], these strate- specific optimization strategies fail in unified settings, re-
+gies do not directly translate to improve training-time ef- vealing that forced token reduction disrupts mutual im-
+ficiency. Furthermore, existing acceleration techniques for provements of discriminative and generative objectives.
+• Lessons for Unified Acceleration: Our results suggest
+* Work done during an internship at Sony AI. that effective acceleration methods may benefit from pre-
+
+3400
+training-time computation remains a challenging problem.
+Token Reduction and Attention Redundancy. The con-
+cept of ”token reduction” or ”pruning” originates from the
+Vision Transformer (ViT) and NLP literature to handle
+long-sequence data [1, 10, 28, 40]. These methods typi-
+cally use attention weights or activation statistics as prox-
+ies for token importance. In the multimodal domain, recent
+studies have analyzed attention sinks [40] and sparsity to
+prune background patches. While effective for single-task
+models, these importance metrics are not directly transfer-
+able to unified models where tokens must serve dual roles
+in discriminative perception and generative synthesis.
+Multi-task Synergy in VLMs. The relationship between
+understanding and generation has been a subject of ongo-
+ing debate. While some studies suggest that generative
+pre-training provides a stronger world model for percep-
+tion [36, 41], others have noted the difficulty of balancing
+these disparate objectives during joint optimization [37].
+We build upon this line of inquiry by investigating how
+Figure 1. Unified autoregressive VLM. A single Transformer structural constraints—specifically, token dropping—affect
+backbone processes multimodal sequences under a unified next- the stability and synergy of this multi-task learning process.
+token prediction objective. (a) In visual understanding, the model
+predicts text tokens conditioned on image and textual context. (b) 3. Problem Setup
+In visual generation, the model autoregressively predicts image
+3.1. Unified Autoregressive Vision-Language Model
+tokens conditioned on preceding text and image tokens.
+We study a unified vision-language model (VLM) that
+serving shared cross-task structures and carefully ac- jointly performs visual understanding and visual genera-
+counting for impact on cross-task learning dynamics. tion within a single autoregressive Transformer backbone,
+following the unified next-token prediction paradigm of
+2. Related Works VILA-U (7B) [39]. Let x = (x1 , . . . , xT ) denote text to-
+Unified Vision-Language Models. Recent advancements kens and v = (v1 , . . . , vM ) denote discrete image tokens
+have shifted toward unifying perception and generation obtained from a visual tokenizer (e.g., VQ-based). We con-
+within a single framework. Models like VILA-U [39], Janus struct a multimodal sequence
+[37], and Chameleon [32] utilize discrete visual tokenizers z = (z1 , . . . , z|z| ) = (system, x, v).
+(e.g., VQVAE [35]) to treat images as a ”foreign language.”
+While these models simplify the pipeline by using a single The model, parameterized by θ, is trained using autore-
+next-token prediction objective, their joint training is com- gressive next-token prediction:
+putationally demanding. Many other hybrid models that |z|
+append diffusion heads [29] to a transformer also require
+Y
+Pθ (z) = Pθ (zt | z<t ).
+fine-tuning the entire backbone across multiple modalities, t=1
+creating the need for efficient training.
+Under this formulation, both text and image tokens are
+Efficiency in Vision-Language Models. Efficiency re-
+treated uniformly as discrete tokens in a single sequence,
+search in VLMs has primarily focused on visual under-
+and a shared next-token objective is applied across modali-
+standing during inference-time [3, 12, 17, 20, 24, 30, 45].
+ties. We visualize the generation process in Figure 1.
+For instance, LLaVA-PruMerge [30] and LLaMA-VID [19]
+reduce the number of visual tokens by identifying spatial 3.2. Training Objective
+redundancy and merging tokens. Other works explore ef- Unified training mixes data from visual understanding and
+ficient attention mechanisms or special masks to skip re- visual generation tasks under a single objective. For a mul-
+dundant computations during inference [44, 46]. However, timodal training sample z, the loss is defined as the negative
+these methods are often designed for ”understanding-only” log-likelihood:
+tasks where the model’s output is limited to text, and a com- |z|
+plete set of image tokens is treated as input, thus having
+X
+Lunified = − log Pθ (zt | z<t ). (1)
+difficulty applying to visual generation, and how to reduce t=1
+
+3401
+Figure 2. Asymmetric depth-wise attention patterns in unified VLMs. Visualization of self-attention heatmaps across layers for
+understanding (a) and generation (b). Understanding exhibits strong early cross-modal interactions followed by a sharp decay in image-
+token attention. Generation, however, preserves substantial image-token attention throughout depth, highlighting a fundamental asymmetry
+in token utilization.
+
+This unified objective simultaneously optimizes: Visual 4.1. Analysis Setup
+Understanding: predicting text tokens conditioned on im-
+Model and Data. We analyze the VILA-U model and
+age and textual context; Visual Generation: predicting im-
+collect attention statistics on both visual understanding
+age tokens conditioned on preceding text and image tokens.
+(with ShareGPT-4v dataset) and visual generation (with
+3.3. Computational Bottleneck JournyDB dataset). For each task, we record attention maps
+Let N = |z| denote the total sequence length. A stan- across all transformer layers.
+dard Transformer layer incurs quadratic self-attention cost:
+FLOPs per layer ∝ N 2 . Since N = T + M , where T and Attention Allocation. Following prior attention decom-
+M are the numbers of text and image tokens respectively, position analysis [3], we measure how attention mass is dis-
+(ℓ,h)
+tributed across token segments. Let Ai,j denote the atten-
+(T + M )2 = T 2 + 2T M + M 2 .
+tion weight at layer ℓ and head h from query token i to key
+In unified VLM training, image tokens typically dominate token j, with
+the sequence (M ≫ T ), making the M 2 term the primary
+X (ℓ,h)
+Ai,j = 1.
+computational bottleneck. j
+This naturally motivates token reduction strategies that
+limit the effective participation of image tokens in atten- Given a partition of tokens into segments (e.g., system,
+tion. In this work, we investigate the effectiveness and lim- image, instruction, output), the attention alloca-
+itations of token-reduction-based training acceleration for tion of segment S at layer ℓ is defined as:
+visual understanding, visual generation, and their unifica-
+tion. We begin by analyzing task-specific redundancy pat- H
+(ℓ) 1 X X X (ℓ,h)
+terns through attention statistics. αS = Ai,j . (2)
+H ih=1 j∈S
+4. Redundancy Analysis
+To guide the design of our acceleration strategies, we ana-
+This metric captures the fraction of total attention mass
+lyze the layerwise attention behavior of a pre-trained uni- (ℓ)
+directed to each token segment at a given layer. We use αS
+fied VLM. Our goal is to analyze task-specific redundancy
+to quantify redundancy patterns across depth.
+in visual tokens that inspires method design.
+
+3402
+Figure 3. Quantitative attention allocation reveals depth-dependent visual redundancy asymmetry. Left: Attention mass distribution
+over token segments (system, image, instruction, output) at representative shallow and deep layers. Right: Layerwise attention allocation
+across the full transformer depth. For visual understanding (top), attention to image tokens sharply decreases in deeper layers, while in-
+struction and output tokens dominate, indicating substantial late-layer visual redundancy. In contrast, visual generation (bottom) maintains
+consistently high attention to image tokens across layers, with increasing allocation to output image tokens in deep layers, reflecting per-
+sistent autoregressive dependence on generated image tokens.
+
+4.2. Task-Specific Attention Patterns Visual Generation (G). In contrast to understanding, im-
+age generation exhibits a persistent and structured depen-
+We visualize (1) attention allocation (Figure 3) across token
+dence on image tokens. Output (image) tokens receive a
+segments over layers and (2) attention heatmaps (Figure 2)
+substantial fraction of attention across early and late lay-
+at representative layers for both visual understanding (U)
+ers, typically ranging from 30% to 60%. Unlike the rapid
+and visual generation (G). The results reveal a clear asym-
+decay observed in understanding tasks, attention to image
+metry in visual token redundancy patterns in different tasks.
+tokens exhibits a consistent increase of attention allocation
+Visual Understanding (U). For perception tasks (e.g., in deeper layers. Across depth, the attention pattern follows
+VQA), visual tokens exhibit clear depth-dependent redun- a hierarchical structure:
+dancy. As shown in Figure 2 and Figure 3, attention rapidly • Early layers: Broad attention over both textual prompts
+shifts away from image tokens as depth increases. Image and previously generated image tokens, establishing
+tokens account for roughly ∼30% of attention in the first global conditioning.
+layer, but this drops below 10% in middle and late lay- • Middle layers: Attention concentrates on recent image
+ers. Instead, attention becomes dominated by instruction tokens and specific prefix positions, reflecting localized
+and output tokens, which together exceed 80% of the total autoregressive dependencies.
+attention mass in deeper layers. Across layers, we observe • Late layers: Image-token attention becomes increasingly
+a consistent transition: significant, ensuring consistency in token prediction.
+• Early layers: Strong cross-modal interactions between
+image and text tokens, indicating visual grounding and
+Robustness Across Scales. We repeat the same analy-
+alignment.
+sis on a smaller-scale VILA-U model trained by ourselves
+• Middle layers: Attention increasingly concentrates on
+(LLaMA-3-3B backbone [5]). The qualitative and quanti-
+text tokens, with diminishing image-to-image and image-
+tative patterns remain consistent: late-layer visual redun-
+to-text interactions.
+dancy emerges for understanding, while generation pre-
+• Late layers: Attention is almost entirely confined to tex-
+serves significant image-token attention. This suggests the
+tual tokens, suggesting that high-level reasoning becomes
+observed asymmetry is not scale-specific.
+predominantly linguistic.
+
+3403
+Figure 4. Task-specific token-reduction-based acceleration mechanisms for unified VLM training. From left to right: (1) Vanilla
+Transformer layer, where both text and image tokens participate fully in self-attention and feed-forward computation. (2) HiMix (Under-
+standing) reduce image tokens from the query stream while retaining them in key/value projections, eliminating quadratic image-to-image
+attention while preserving text-to-image interactions. (3) HMGen–Full layer (Generation) maintains full autoregressive attention but sep-
+arates image- and text-related projections for stable hierarchical conditioning. (4) HMGen–Shallow layer (Generation) skips image-token
+attention and feed-forward updates, forwarding their hidden states to reduce computation while preserving autoregressive structure.
+
+4.3. Implications for Acceleration removed from the query projections while retained in the
+key and value projections. This eliminates quadratic image-
+This implies token reduction must be task-aware:
+to-image attention while preserving text-to-image interac-
+1. Understanding: Visual tokens are redundant after the tions. As shown in Sec. 4, visual tokens become increas-
+first few layers. It is possible to reduce image tokens ingly redundant in deeper layers for understanding tasks;
+in some way and significantly reduce quadratic attention thus, removing them from queries reduces computation
+cost with minimal performance impact. with minimal impact on prediction. Moreover, noticing that
+2. Generation: Visual tokens are autoregressively gener- the final output of each layer only includes text tokens as
+ated during inference, and removing training compu- image tokens are removed from queries, this strategy re-
+tation on them must still enable the same next-token quires the input original image tokens to each layer of the
+prediction for inference. Deep layers in visual genera- transformer.
+tion also have limited bandwidth to reduce image token-
+related computation. Theoretical Efficiency. For a sequence with T text tokens
+and M image tokens (total length T + M ) and hidden size
+Therefore, a unified model cannot rely on a single token-
+d, the per-layer complexity of a vanilla Transformer can be
+dropping rule. The structural roles of visual tokens differ
+decomposed into: (i) self-attention, dominated by the QK ⊤
+fundamentally between discriminative and generative ob-
+operation, O((T + M )2 d); and (ii) the feed-forward net-
+jectives. We introduce the task-specific training accelera-
+work (two linear layers), O(8(T + M )d2 ). Thus,
+tion methods below.
+Costbase = O (T + M )2 d + 8(T + M )d2 .
+
+5. Proposed Task-Specific Accelerators
+Motivated by the task-specific redundancy revealed in
+With HiMix, image tokens are removed from the query
+Sec. 4, we investigate whether token-reduction-based accel-
+stream, so attention is computed only for T text queries
+eration can be done separately for visual understanding and
+over (T + M ) keys/values, reducing the attention term to
+generation. We first evaluate these strategies in isolation
+O(T (T + M )d) while keeping the FFN term unchanged:
+before analyzing their behavior under unified training.
+CostHiMix = O T (T + M )d + 8T d2 .
+
+5.1. Understanding (U)
+Method. We adopt HiMix [46] as the baseline accelerator When M ≫ T , the dominant O(M 2 d) attention term is
+for visual understanding. Unlike token merging/dropping removed. In practice, this leads to substantial FLOPs re-
+given complete image token sets based on inference-time duction while preserving the cross-modal interactions nec-
+analysis, HiMix modifies the attention computation in a essary for visual understanding.
+manner compatible with both training and inference, mak- Experimental Results. We evaluate HiMix in an
+ing it suitable for unified autoregressive VLMs. The key understanding-only setting of VILA-U (LLaMA-3-3B
+idea is to reduce tokens in queries. backbone [5, 34]), with the ShareGPT-4v dataset [2]. We
+Specifically, as illustrated in Figure 4, image tokens are follow VILA-U to conduct pretraining and finetuning each
+
+3404
+Table 1. HiMix for visual understanding. Performance and computational cost comparison between the understanding-only VILA-U
+baseline and HiMix. HiMix reduces training FLOPs to 0.24× (76% reduction) by removing image-token queries, while incurring only
+moderate performance degradation across GQA, MME, POPE, and SeedBench benchmarks. The relatively small accuracy drop compared
+to the substantial computational savings confirms significant late-layer visual redundancy in understanding tasks.
+
+Method GQA MME-C MME-P POPE-A POPE-P POPE-R POPE-F1 SeedBench-Img FLOPs
+VILA-U (U-only) 52.86 258.21 1054.88 81.30 84.67 74.76 79.40 46.05 1×
+HiMix (U-only) 49.92 224.64 983.30 78.56 78.03 79.49 78.75 40.88 0.24×
+
+for one epoch, and evaluate on several visual understanding
+benchmarks [8, 13, 15, 18]. Results are in Table 1.
+HiMix reduces FLOPs to 0.24× of the baseline, corre-
+sponding to a 76% reduction in computation. Despite this
+substantial saving, performance degradation remains mod-
+erate. For example, GQA accuracy decreases from 52.86 to
+49.92, while POPE F1 drops slightly from 79.40 to 78.75. Figure 5. Inference-time-only HMGen. Qualitative comparison
+Notably, the performance drop is significantly smaller than between the original model (bottom) and inference-time-only HM-
+the reduction in computational cost, indicating substantial Gen (top), where image-token computation in shallow layers is
+redundancy in late-layer visual processing for understand- skipped without retraining. Visual quality and semantic consis-
+tency are largely preserved despite reduced computation.
+ing tasks. Overall, these results confirm that visual under-
+standing exhibits considerable late-layer image redundancy. HMGen: Hierarchical Mixture for Generation. Mo-
+Structured removal of image-token queries yields large ef- tivated by the hierarchical attention structure observed in
+ficiency gains while largely preserving cross-modal reason- Sec. 4, we instead propose HMGen, which is composed
+ing capability. of two kinds of layers illustrated in Figure 4. HMGen pre-
+5.2. Generation (G) serves the autoregressive structure with image in query from
+model level while reducing tokens in specific layers.
+Design Constraints from Autoregressive Image Genera-
+We introduce K designated shallow layers in the middle
+tion. Unlike visual understanding, visual generation fol-
+portion of the transformer (out of L total layers) while other
+lows a strict autoregressive process: each predicted image
+layers remain as full layers. This is because early full layers
+token is appended to the sequence and must serve as a
+are required to preserve global conditioning, while late full
+valid query for predicting subsequent tokens. Therefore,
+layers are required to ensure high-fidelity final token predic-
+image tokens must remain in the query stream. Remov-
+tion. We empirically find that alternating shallow and full
+ing them from queries would break the autoregressive de-
+layers in the middle layers yields the best trade-off between
+pendency chain and make inference inconsistent with train-
+efficiency and generation quality.
+ing. This constraint fundamentally differentiates generation
+In shallow layers, image-token attention computation is
+from understanding and prevents directly applying HiMix-
+skipped, and the feed-forward network is applied only to
+style query removal.
+text tokens. The image-token hidden states are directly for-
+One might instead consider removing image tokens from
+warded from the previous layer to the next without partici-
+key/value projections while keeping them in queries. Al-
+pating in self-attention or FFN updates.
+though this reduces part of the attention computation, two
+In full layers, we further introduce separate projection
+major issues arise. (1) Limited FLOPs Reduction. Even if
+parameters for image and text tokens. Although the back-
+image-to-image attention is partially suppressed, the feed-
+bone remains unified, decoupling image-related projections
+forward network (FFN) still processes all image tokens.
+stabilizes training and improves generation quality. This
+When M ≫ T , the dominant O(8M d2 ) FFN term remains
+separation allows image-token representations to maintain
+intact, resulting in minimal overall computational savings.
+dedicated pathways even when their participation in atten-
+(2) Severe Performance Degradation. Image generation
+tion is selectively reduced. Empirically, we observe im-
+exhibits persistent image-token dependence across depth
+proved performance compared to fully shared parameteri-
+(Sec. 4). Suppressing key/value participation disrupts hier-
+zation under the same FLOPs budget.
+archical autoregressive conditioning, leading to substantial
+quality degradation in practice. Empirically, we observe Theoretical Efficiency. HMGen maintains the autore-
+that this naive modification yields both limited efficiency gressive dependency chain while reducing computation in
+gains and large drops in generative performance. For ex- K designated middle “shallow” layers (out of L total) by
+ample, applying this design to one middle layer leads to a skipping image-token attention/MLP computation and for-
+significant drop (-3.52) on MJHQ-30K [16]. warding their hidden states. Using the same decomposition
+
+3405
+as above, a vanilla layer costs Table 2. HMGen for visual generation. Introducing shallow lay-
+ers reduces FLOPs (to 0.85× and 0.75×) while improving genera-
+Costbase = O (T + M )2 d + 8(T + M )d2 .
+
+tive quality compared to the VILA-U baseline, demonstrating ef-
+ficient and structure-aware acceleration.
+In a shallow layer, attention is computed only for T text
+queries, giving O(T 2 d), and the FFN is applied only to text Method #Shallow Layers MJHQ-30K FLOPs
+tokens, giving O(8T d2 ): VILA-U (G-only) 0 17.45 1×
+HMGen 3 12.16 0.85x
+Costshallow = O T 2 d + 8T d2 .
+
+HMGen 5 12.55 0.75x
+
+The total complexity across L layers is therefore Overall, HMGen not only reduces computation but also
+enhances generative quality, demonstrating that hierarchi-
+CostHMGen = (L − K) O (T + M )2 d + 8(T + M )d2
+
+cal, structure-aware acceleration is better aligned with the
++ K O T 2 d + 8T d2 .
+
+intrinsic dependencies of visual generation.
+
+When M ≫ T , each shallow layer removes the domi- 6. The Limits of Unified Efficiency
+nant image-related costs in both attention and FFN, i.e., the While the task-specific token-reduction-based accelerators
+O(M 2 d) and O(8M d2 ) terms. Consequently, the overall in Sec. 4 demonstrate substantial efficiency gains when ap-
+FLOPs reduction scales with the fraction of layers made plied to understanding or generation in isolation, our pri-
+shallow (K/L), and is upper-bounded by the compute in mary objective is to evaluate their behavior under unified
+the remaining (L − K) full layers. In the idealized regime training. In unified VLMs, both objectives are optimized
+where shallow layers contribute negligible cost relative to jointly under a shared backbone, and improvements in one
+full layers, the relative cost approaches 1 − K/L, yielding task often influence the other through shared representa-
+an approximate speedup of 1/(1 − K/L). tions. Efficiency modifications may therefore interact with
+cross-task learning dynamics in subtle ways. In this section,
+Experimental Results. We first evaluate HMGen in a we examine whether task-specific acceleration strategies re-
+generation-only setting of VILA-U using the JourneyDB main effective in a unified setting, and identify structural
+[31] dataset, and evaluate visual generation on MJHQ-30K barriers that emerge during joint optimization.
+[16]. Quantitative results are shown in Table 2, and quali-
+tative inference-time only results (without training, just di- 6.1. Synergy Breakage: The Cost of Efficiency
+rectly skipping image-related computations in middle lay- Positive Cross-Task Synergy Baseline We first examine
+ers) are visualized in Figure 5. the unified baseline without token reduction. From Table 3,
+(1) Inference-Time Applicability. Figure 5 demonstrates joint training improves both tasks relative to their single-
+that HMGen can be directly applied at inference time with- task counterparts. Understanding improves under unified
+out architectural modification. By design, shallow layers training: GQA increases from 52.86 (U-only) to 56 (Uni-
+preserve the autoregressive query structure, allowing image fied), POPE F1 from 79.40 to 82.3, and SeedBench from
+tokens to be appended and used as subsequent queries dur- 46.05 to 47.88. Generation also improves: MJHQ-30K
+ing generation. This confirms that HMGen is not merely improves from 17.45 (G-only) to 15.78 (Unified), indicat-
+a training-time approximation but a structurally consistent ing better generative quality. Formally, let performance on
+acceleration mechanism. understanding and generation be U(θ) and G(θ). For the
+(2) Reasonable FLOPs Reduction. As shown in Table 2, unified baseline,
+introducing K shallow layers yields significant computa-
+tional savings. With K = 3, FLOPs are reduced to 0.85× U(θunified ) > U(θU-only ), G(θunified ) > G(θG-only ).
+of the baseline, and with K = 5, to 0.75×. Since each
+This mutual improvement confirms the presence of positive
+shallow layer removes both the dominant O(M 2 d) atten-
+cross-task transfer, which motivates unified modeling.
+tion term and the O(8M d2 ) FFN term, the efficiency gain
+scales approximately with the fraction of shallow layers. Severe Collapse with Fully Shared Parameters in
+(3) Improved Generation Quality. Notably, HMGen HiMix-HMGen. The row HiMix–HMGen (Share All) in
+achieves substantially better MJHQ-30K scores compared Table 3 shows substantial degradation than HiMix (U-only)
+to the generation-only VILA-U baseline (17.45 → 12.16 and HMGen (g-only): GQA drops from 56 to 33, POPE
+with K = 3). This improvement arises from our separa- F1 from 82.3 to 67.59, SeedBench from 47.88 to 31.38,
+tion of image and text projection parameters within the full while MJHQ-30K worsens from 12.16 to 12.53. Although
+layers. By decoupling image-specific transformations, the FLOPs are reduced to 0.56×, both tasks suffer significant
+model maintains more stable hierarchical image representa- performance collapse. Notably, unified performance be-
+tions even when computation is selectively reduced. comes worse than the single-task baseline in some metrics,
+
+3406
+Table 3. Unified training performance and efficiency. The unified baseline improves both understanding (e.g., GQA 0.5600 vs. 0.5286
+U-only) and generation (MJHQ 15.78 vs. 17.45 G-only), demonstrating positive cross-task synergy. However, combining HiMix and
+HMGen under joint training substantially reduces FLOPs (0.55–0.56×) but degrades performance on both objectives (e.g., GQA drops to
+0.4705/0.3300 and MJHQ worsens to 14.54/12.53), indicating that task-specific token reduction disrupts mutual gains.
+Method GQA MME-C MME-P POPE-A POPE-P POPE-R POPE-F1 SeedBench-Img MJHQ FLOPs
+VILA-U (U-only) 52.86 258.21 1054.88 81.30 84.67 74.76 79.40 46.05 – 1×
+VILA-U (G-only) – – – – – – – – 17.45 1×
+VILA-U (Unified) 56.00 250.00 1135.91 83.37 87.95 77.33 82.30 47.88 15.78 1×
+HiMix (U-only) 49.92 224.64 983.30 78.56 78.03 79.49 78.75 40.88 – 0.24×
+HMGen (G-only) – – – – – – – – 12.16 0.85×
+HiMix-HMGen
+(Share All Params) 33.00 233.21 662.26 60.84 57.66 81.64 67.59 31.38 12.53 0.56×
+HiMix-HMGen
+(Share Partial Params) 47.05 255.00 847.82 76.43 76.10 77.10 76.58 34.50 14.54 0.55×
+
+6.3. Structural Drivers of Synergy Loss
+We discuss possible drivers of the observed synergy break-
+age below to guide future investigation. Unified training
+implicitly assumes a shared latent space ϕ(z; θ), where dis-
+criminative and generative signals co-shape representations.
+Task-specific token dropping changes which tokens partic-
+ipate in attention and which parameters receive gradients.
+Consequently, gradients ∇θ LU and ∇θ LG are computed
+under incompatible masking operators, leading to poten-
+tially fragmented optimization dynamics. This hypothesis
+is also supported by the separate image projection strategy.
+Figure 6. Separate image projection strategy. To reduce inter- Key Takeaway. Table 3 reveals a consistent pattern:
+ference between task-specific routing, we decouple image-related the unified baseline exhibits positive cross-task transfer,
+projection parameters (e.g., WvQ , WvK , WvV ) for HiMix (high- whereas task-specific token reduction eliminates or reverses
+lighted by yellow) and HMGen-Full (highlighted by blue), while these gains. Efficiency improvements achieved in isolation
+keeping the backbone shared. This design aims to stabilize hi- do not compose under unified optimization. Effective uni-
+erarchical image representations when token participation differs fied acceleration must therefore preserve shared computa-
+across tasks. tional pathways that enable cross-task representation align-
+indicating negative transfer. Thus, naively combining task- ment, rather than simply aggregating task-optimal pruning
+specific accelerators destroys cross-task synergy. strategies.
+
+6.2. Separate Image Projection Strategy 7. Conclusion
+To mitigate this issue, we introduce partial decoupling of We investigate the feasibility and limits of token-reduction-
+image-related projections, as illustrated in Figure 6. Instead based acceleration for unified vision-language models and
+of fully shared projections, we decompose: identify a fundamental asymmetry in visual token us-
+age: visual understanding exhibits substantial late-layer re-
+WvQ = {Wvu
+Q Q
+, Wvx }, dundancy, whereas visual generation maintains persistent
+image-token dependence across depth. Based on this in-
+and similarly for WvK and WvV . This creates semi- sight, we design task-specific accelerators that achieve sig-
+independent image pathways while preserving the unified nificant efficiency gains in isolated settings; however, when
+backbone. From Table 3, HiMix–HMGen (Share Partial) combined under unified training, they induce a consistent
+improves over the fully shared variant significantly: GQA synergy loss, as task-specific token dropping leads to diver-
+increases from 33 to 47.05, POPE F1 from 67.59 to 76.58, gent parameter usage and removes the mutual performance
+and MJHQ-30K from 12.53 to 14.54. However, perfor- gains typically observed in joint optimization. Our findings
+mance still falls short of the unified baseline per understand- suggest that efficient unified modeling requires preserving
+ing, while better than the unified baseline on generation shared computational pathways that enable cross-task rep-
+(56 GQA and 15.78 MJHQ-30K), indicating that parame- resentation alignment, rather than simply aggregating task-
+ter separation partially restores synergy. specific strategies.
+
+3407
+References Gai, and Yadong Mu. Unified language-vision pretraining in
+llm with dynamic discrete visual tokenization, 2024. 1
+[1] Daniel Bolya, Cheng-Yang Fu, Xiaoliang Dai, Peizhao
+[15] Bohao Li, Rui Wang, Guangzhi Wang, Yuying Ge, Yixiao
+Zhang, Christoph Feichtenhofer, and Judy Hoffman. Token
+Ge, and Ying Shan. Seed-bench: Benchmarking multimodal
+merging: Your vit but faster, 2023. 1, 2
+llms with generative comprehension, 2023. 6
+[2] Lin Chen, Jinsong Li, Xiaoyi Dong, Pan Zhang, Conghui
+[16] Daiqing Li, Aleks Kamko, Ehsan Akhgari, Ali Sabet, Lin-
+He, Jiaqi Wang, Feng Zhao, and Dahua Lin. Sharegpt4v:
+miao Xu, and Suhail Doshi. Playground v2.5: Three insights
+Improving large multi-modal models with better captions. In
+towards enhancing aesthetic quality in text-to-image genera-
+European Conference on Computer Vision, pages 370–387.
+tion, 2024. 6, 7
+Springer, 2024. 5
+[17] Wentong Li, Yuqian Yuan, Jian Liu, Dongqi Tang, Song
+[3] Liang Chen, Haozhe Zhao, Tianyu Liu, Shuai Bai, Junyang
+Wang, Jie Qin, Jianke Zhu, and Lei Zhang. Tokenpacker:
+Lin, Chang Zhou, and Baobao Chang. An image is worth 1/2
+Efficient visual projector for multimodal llm, 2024. 2
+tokens after layer 2: Plug-and-play inference acceleration for
+large vision-language models, 2024. 1, 2, 3 [18] Yifan Li, Yifan Du, Kun Zhou, Jinpeng Wang, Wayne Xin
+Zhao, and Ji-Rong Wen. Evaluating object hallucination in
+[4] Wenliang Dai, Junnan Li, Dongxu Li, Anthony Tiong,
+large vision-language models, 2023. 6
+Junqi Zhao, Weisheng Wang, Boyang Li, Pascale Fung,
+and Steven Hoi. InstructBLIP: Towards general-purpose [19] Yanwei Li, Chengyao Wang, and Jiaya Jia. Llama-vid: An
+vision-language models with instruction tuning. In Thirty- image is worth 2 tokens in large language models, 2023. 2
+seventh Conference on Neural Information Processing Sys- [20] Zhihang Lin, Mingbao Lin, Luxi Lin, and Rongrong Ji.
+tems, 2023. 1 Boosting multimodal large language models with visual to-
+[5] Abhimanyu Dubey, Abhinav Jauhri, Abhinav Pandey, Ab- kens withdrawal for rapid inference, 2025. 2
+hishek Kadian, Ahmad Al-Dahle, Aiesha Letman, Akhil [21] Haotian Liu, Chunyuan Li, Yuheng Li, and Yong Jae Lee.
+Mathur, Alan Schelten, Amy Yang, Angela Fan, et al. The Improved baselines with visual instruction tuning, 2023. 1
+llama 3 herd of models. arXiv e-prints, pages arXiv–2407, [22] Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.
+2024. 4, 5 Visual instruction tuning. In NeurIPS, 2023. 1
+[6] Patrick Esser, Robin Rombach, and Björn Ommer. Taming [23] Hao Liu, Wilson Yan, Matei Zaharia, and Pieter Abbeel.
+transformers for high-resolution image synthesis, 2021. 1 World model on million-length video and language with
+[7] Patrick Esser, Sumith Kulal, Andreas Blattmann, Rahim blockwise ringattention. In The Thirteenth International
+Entezari, Jonas Müller, Harry Saini, Yam Levi, Dominik Conference on Learning Representations, 2025. 1
+Lorenz, Axel Sauer, Frederic Boesel, Dustin Podell, Tim [24] Gen Luo, Yiyi Zhou, Tianhe Ren, Shengxin Chen, Xiaoshuai
+Dockhorn, Zion English, Kyle Lacey, Alex Goodwin, Yan- Sun, and Rongrong Ji. Cheap and quick: Efficient vision-
+nik Marek, and Robin Rombach. Scaling rectified flow trans- language instruction tuning for large language models, 2023.
+formers for high-resolution image synthesis, 2024. 1 1, 2
+[8] Chaoyou Fu, Peixian Chen, Yunhang Shen, Yulei Qin, [25] Chuofan Ma, Yi Jiang, Junfeng Wu, Jihan Yang, Xin Yu, Ze-
+Mengdan Zhang, Xu Lin, Jinrui Yang, Xiawu Zheng, Ke Li, huan Yuan, Bingyue Peng, and Xiaojuan Qi. Unitok: A uni-
+Xing Sun, Yunsheng Wu, Rongrong Ji, Caifeng Shan, and fied tokenizer for visual generation and understanding, 2025.
+Ran He. MME: A comprehensive evaluation benchmark for 1
+multimodal large language models. In The Thirty-ninth An- [26] Yiyang Ma, Xingchao Liu, Xiaokang Chen, Wen Liu,
+nual Conference on Neural Information Processing Systems Chengyue Wu, Zhiyu Wu, Zizheng Pan, Zhenda Xie, Haowei
+Datasets and Benchmarks Track, 2025. 6 Zhang, Xingkai yu, Liang Zhao, Yisong Wang, Jiaying Liu,
+[9] Yuying Ge, Sijie Zhao, Ziyun Zeng, Yixiao Ge, Chen Li, and Chong Ruan. Janusflow: Harmonizing autoregression
+Xintao Wang, and Ying Shan. Making llama see and draw and rectified flow for unified multimodal understanding and
+with seed tokenizer, 2023. 1 generation, 2024. 1
+[10] Xiangming Gu, Tianyu Pang, Chao Du, Qian Liu, Fengzhuo [27] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Zhang, Cunxiao Du, Ye Wang, and Min Lin. When attention Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+sink emerges in language models: An empirical view. arXiv Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen
+preprint arXiv:2410.10781, 2024. 2 Krueger, and Ilya Sutskever. Learning transferable visual
+[11] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu- models from natural language supervision, 2021. 1
+sion probabilistic models, 2020. 1 [28] Yongming Rao, Wenliang Zhao, Benlin Liu, Jiwen Lu, Jie
+[12] Wenbo Hu, Zi-Yi Dou, Liunian Harold Li, Amita Kamath, Zhou, and Cho-Jui Hsieh. Dynamicvit: Efficient vision
+Nanyun Peng, and Kai-Wei Chang. Matryoshka query trans- transformers with dynamic token sparsification. In Advances
+former for large vision-language models, 2024. 1, 2 in Neural Information Processing Systems (NeurIPS), 2021.
+[13] Drew A. Hudson and Christopher D. Manning. Gqa: A new 1, 2
+dataset for real-world visual reasoning and compositional [29] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+question answering, 2019. 6 Patrick Esser, and Björn Ommer. High-resolution image syn-
+[14] Yang Jin, Kun Xu, Kun Xu, Liwei Chen, Chao Liao, Jian- thesis with latent diffusion models, 2022. 1, 2
+chao Tan, Quzhe Huang, Bin Chen, Chenyi Lei, An Liu, [30] Yuzhang Shang, Mu Cai, Bingxin Xu, Yong Jae Lee, and Yan
+Chengru Song, Xiaoqiang Lei, Di Zhang, Wenwu Ou, Kun Yan. Llava-prumerge: Adaptive token reduction for efficient
+
+3408
+large multimodal models. arXiv preprint arXiv:2403.15388, Fazel-Zarandi, Asli Celikyilmaz, Luke Zettlemoyer, and Ar-
+2024. 1, 2 men Aghajanyan. Scaling autoregressive multi-modal mod-
+[31] Keqiang Sun, Junting Pan, Yuying Ge, Hao Li, Haodong els: Pretraining and instruction tuning, 2023.
+Duan, Xiaoshi Wu, Renrui Zhang, Aojun Zhou, Zipeng Qin, [43] Jun Zhan, Junqi Dai, Jiasheng Ye, Yunhua Zhou, Dong
+Yi Wang, et al. Journeydb: A benchmark for generative im- Zhang, Zhigeng Liu, Xin Zhang, Ruibin Yuan, Ge Zhang,
+age understanding. Advances in neural information process- Linyang Li, Hang Yan, Jie Fu, Tao Gui, Tianxiang Sun, Yu-
+ing systems, 36:49659–49678, 2023. 7 Gang Jiang, and Xipeng Qiu. Anygpt: Unified multimodal
+[32] Chameleon Team. Chameleon: Mixed-modal early-fusion llm with discrete sequence modeling, 2025. 1
+foundation models, 2024. 1, 2 [44] Junyang Zhang, Mu Yuan, Ruiguang Zhong, Puhan Luo,
+[33] Keyu Tian, Yi Jiang, Zehuan Yuan, Bingyue Peng, and Li- Huiyou Zhan, Ningkang Zhang, Chengchen Hu, and Xi-
+wei Wang. Visual autoregressive modeling: Scalable image angyang Li. A-vl: Adaptive attention for large vision-
+generation via next-scale prediction, 2024. 1 language models, 2025. 1, 2
+[34] Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier [45] Shaolei Zhang, Qingkai Fang, Zhe Yang, and Yang Feng.
+Martinet, Marie-Anne Lachaux, Timothée Lacroix, Baptiste Llava-mini: Efficient image and video large multimodal
+Rozière, Naman Goyal, Eric Hambro, Faisal Azhar, Aure- models with one vision token, 2025. 2
+lien Rodriguez, Armand Joulin, Edouard Grave, and Guil- [46] Xuange Zhang, Dengjie Li, Bo Liu, Zenghao Bao, Yao Zhou,
+laume Lample. Llama: Open and efficient foundation lan- Baisong Yang, Zhongying Liu, Yujie Zhong, Zheng Zhao,
+guage models, 2023. 5 and Tongtong Yuan. Himix: Reducing computational com-
+[35] Aaron van den Oord, Oriol Vinyals, and Koray plexity in large vision-language models, 2025. 2, 5
+Kavukcuoglu. Neural discrete representation learning,
+2018. 2
+[36] Xinlong Wang, Xiaosong Zhang, Zhengxiong Luo, Quan
+Sun, Yufeng Cui, Jinsheng Wang, Fan Zhang, Yueze Wang,
+Zhen Li, Qiying Yu, Yingli Zhao, Yulong Ao, Xuebin Min,
+Tao Li, Boya Wu, Bo Zhao, Bowen Zhang, Liangdong Wang,
+Guang Liu, Zheqi He, Xi Yang, Jingjing Liu, Yonghua Lin,
+Tiejun Huang, and Zhongyuan Wang. Emu3: Next-token
+prediction is all you need, 2024. 1, 2
+[37] Chengyue Wu, Xiaokang Chen, Zhiyu Wu, Yiyang Ma,
+Xingchao Liu, Zizheng Pan, Wen Liu, Zhenda Xie, Xingkai
+Yu, Chong Ruan, et al. Janus: Decoupling visual encoding
+for unified multimodal understanding and generation. arXiv
+preprint arXiv:2410.13848, 2024. 1, 2
+[38] Junfeng Wu, Yi Jiang, Chuofan Ma, Yuliang Liu, Heng-
+shuang Zhao, Zehuan Yuan, Song Bai, and Xiang Bai. Liq-
+uid: Language models are scalable and unified multi-modal
+generators. arXiv preprint arXiv:2412.04332, 2024. 1
+[39] Yecheng Wu, Zhuoyang Zhang, Junyu Chen, Haotian Tang,
+Dacheng Li, Yunhao Fang, Ligeng Zhu, Enze Xie, Hongxu
+Yin, Li Yi, et al. Vila-u: a unified foundation model inte-
+grating visual understanding and generation. arXiv preprint
+arXiv:2409.04429, 2024. 1, 2
+[40] Guangxuan Xiao, Yuandong Tian, Beidi Chen, Song Han,
+and Mike Lewis. Efficient streaming language models with
+attention sinks. arXiv, 2023. 2
+[41] Jinheng Xie, Weijia Mao, Zechen Bai, David Junhao Zhang,
+Weihao Wang, Kevin Qinghong Lin, Yuchao Gu, Zhijie
+Chen, Zhenheng Yang, and Mike Zheng Shou. Show-o:
+One single transformer to unify multimodal understanding
+and generation. arXiv preprint arXiv:2408.12528, 2024. 1,
+2
+[42] Lili Yu, Bowen Shi, Ramakanth Pasunuru, Benjamin Muller,
+Olga Golovneva, Tianlu Wang, Arun Babu, Binh Tang, Brian
+Karrer, Shelly Sheynin, Candace Ross, Adam Polyak, Rus-
+sell Howes, Vasu Sharma, Puxin Xu, Hovhannes Tamoyan,
+Oron Ashual, Uriel Singer, Shang-Wen Li, Susan Zhang,
+Richard James, Gargi Ghosh, Yaniv Taigman, Maryam
+
+3409

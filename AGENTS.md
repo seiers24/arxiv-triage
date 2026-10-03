@@ -100,7 +100,7 @@ this repository-wide file.
 | Role | Kind | Definition |
 |---|---|---|
 | Orchestrator | Main interactive session | `docs/roles/orchestrator.md`; executable runbook in `.claude/skills/triage-topic/SKILL.md` |
-| Paper screener | Batched worker, pending exact screening schema | `.claude/agents/paper-screener.md` |
+| Paper screener | Batched worker | `.claude/agents/paper-screener.md` |
 | Paper reader | Per-paper worker | `.claude/agents/paper-reader.md` |
 | Critic | Per-record adversarial worker | `.claude/agents/critic.md` |
 | Reviewer | Per-investigation corpus worker | `.claude/agents/reviewer.md` |

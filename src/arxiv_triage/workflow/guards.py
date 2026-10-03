@@ -19,6 +19,7 @@ class GuardViolation(ValueError):
 
 
 class JobType(StrEnum):
+    PAPER_SCREEN = "paper_screen"
     PAPER_READ = "paper_read"
     PAPER_CRITIQUE = "paper_critique"
     CORPUS_REVIEW = "corpus_review"
@@ -52,15 +53,25 @@ class LogicalJobKey:
     investigation_id: str
     job_type: JobType
     paper_id: str | None
+    screening_batch_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.investigation_id:
             raise GuardViolation("investigation_id must not be empty")
-        if self.job_type is JobType.CORPUS_REVIEW:
-            if self.paper_id is not None:
-                raise GuardViolation("corpus-review jobs must have paper_id=None")
-        elif not self.paper_id:
-            raise GuardViolation("paper reader and critic jobs require paper_id")
+        if self.job_type is JobType.PAPER_SCREEN:
+            if self.paper_id is not None or not self.screening_batch_id:
+                raise GuardViolation(
+                    "paper-screen jobs require paper_id=None and screening_batch_id"
+                )
+        elif self.job_type is JobType.CORPUS_REVIEW:
+            if self.paper_id is not None or self.screening_batch_id is not None:
+                raise GuardViolation(
+                    "corpus-review jobs require paper_id=None and screening_batch_id=None"
+                )
+        elif not self.paper_id or self.screening_batch_id is not None:
+            raise GuardViolation(
+                "paper reader and critic jobs require paper_id and screening_batch_id=None"
+            )
 
 
 @dataclass(frozen=True, slots=True)

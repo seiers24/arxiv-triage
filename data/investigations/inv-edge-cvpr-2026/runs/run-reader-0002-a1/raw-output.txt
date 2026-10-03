@@ -1,0 +1,210 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0002-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-86a7f001c3c2f76b",
+  "source_document_id": "src-eeee27d89cf8bbb5",
+  "input_hash": "20730000800980c4bf89304586bcae9f79a5a7c9cb3bb28c4314087e50fbd8b1",
+  "problem": "Diffusion Transformers incur high self-attention compute and memory costs for high-resolution image and multi-frame video generation, limiting deployment on constrained mobile systems.",
+  "method": "CoReDiT prunes locally redundant tokens before self-attention using a linear-time spatial-coherence score, reconstructs skipped outputs from retained neighbors, and learns a progressive block- and timestep-adaptive pruning schedule during lightweight fine-tuning.",
+  "claims": [
+    {
+      "claim_id": "claim-001",
+      "claim_kind": "problem",
+      "text": "DiT self-attention scales quadratically with token count, making high-resolution images and multi-frame videos costly and often impractical on compute- and memory-constrained mobile platforms.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0041",
+        "start_char": 3002,
+        "end_char": 3215,
+        "quote": "Self-attention scales quadratically with the number of tokens,\nmaking high-resolution images and multi-frame videos particularly expensive and often impractical on compute- and memory-constrained mobile platforms."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-002",
+      "claim_kind": "method",
+      "text": "CoReDiT uses a linear-time spatial-coherence score to identify locally redundant latent tokens and skips high-coherence tokens in self-attention.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0038",
+        "start_char": 1370,
+        "end_char": 1540,
+        "quote": "CoReDiT uses a linear-time spatial coherence score to estimate local redundancy in the latent token lattice and skips high-coherence (redundant) tokens in self-attention."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-003",
+      "claim_kind": "method",
+      "text": "The method reconstructs skipped attention outputs with coherence-guided aggregation of spatially neighboring retained tokens to keep a dense representation and avoid discontinuities.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0038",
+        "start_char": 1541,
+        "end_char": 1725,
+        "quote": "To maintain a dense representation and avoid visual discontinuities, we reconstruct skipped attention outputs via coherence-guided aggregation of spatially neighboring retained tokens."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-004",
+      "claim_kind": "method",
+      "text": "A progressive block-adaptive schedule gradually increases pruning and assigns larger pruning budgets to blocks and denoising steps with higher redundancy.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0038",
+        "start_char": 1726,
+        "end_char": 1909,
+        "quote": "We further introduce a progressive, block-adaptive pruning schedule that increases pruning gradually and allocates larger budgets to blocks and denoising steps with higher redundancy."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-005",
+      "claim_kind": "result",
+      "text": "For PixArt-alpha-1024 at 40% average pruning, CoReDiT reports 48% lower self-attention FLOPs and 24% lower total FLOPs, with FID 28.7 versus 27.3 for the baseline.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0095",
+        "start_char": 24653,
+        "end_char": 24819,
+        "quote": "At r = 40 % r=40\\% average pruning, CoReDiT reduces self-attention FLOPs by 48% (24% total FLOPs) while maintaining quality close to the baseline (FID 28.7 vs. 27.3)."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-006",
+      "claim_kind": "result",
+      "text": "On Nvidia H100 GPUs with memory-efficient attention, 45% pruning reduces self-attention latency by 26% but end-to-end latency by 11%, with unchanged non-attention work limiting the total gain.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0097",
+        "start_char": 25205,
+        "end_char": 25704,
+        "quote": "Tab.   2 reports both self-attention and end-to-end latency on Nvidia H100 GPUs under two attention backends: (i) highly-optimized kernels xformers.memory_efficient_attention (Efficient Attn) and (ii) PyTorch native attention implementations (Native Attn).\nWith 45% pruning, CoReDiT reduces self-attention latency by 26% under the efficient attention backend, but end-to-end latency improves by 11% because non-attention components (e.g., FFN/MLP, I/O, and kernel launch overheads) remain unchanged."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-007",
+      "claim_kind": "result",
+      "text": "On Qualcomm Snapdragon 8 Elite NPUs, CoReDiT reports up to 1.72x per-block speedup at 1600 resolution with 50% pruning.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0098",
+        "start_char": 25851,
+        "end_char": 26037,
+        "quote": "Beyond GPU inference, Fig.   8 shows per-block latency on Qualcomm Snapdragon 8 Elite NPUs.\nAt 50% pruning, CoReDiT achieves up to 1.72 × 1.72\\times per-block speedup at 1600 resolution."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-008",
+      "claim_kind": "result",
+      "text": "The baseline PixArt-alpha runs out of memory above 1600 resolution, while CoReDiT runs at up to 1920 and matches baseline latency at 1600.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0098",
+        "start_char": 26038,
+        "end_char": 26225,
+        "quote": "Notably, the baseline PixArt- α \\alpha encounters out-of-memory (OOM) error at resolutions above 1600, whereas CoReDiT runs up to 1920 resolution and matches the baseline latency at 1600."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-009",
+      "claim_kind": "result",
+      "text": "For PixArt-Sigma-2048 at 23% average pruning, CoReDiT reports 32% lower self-attention FLOPs, 25% lower total FLOPs, 22% lower self-attention latency, and 15% lower end-to-end latency at batch size 32 with memory-efficient attention.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0100",
+        "start_char": 26524,
+        "end_char": 26788,
+        "quote": "As shown in Tab.   3 , at an average pruning level of 23%, CoReDiT reduces self-attention FLOPs by 32% (25% total FLOPs), translating into a 22% reduction in self-attention latency and a 15% end-to-end latency reduction (batch size 32, memory-efficient attention)."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "real_hardware",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-010",
+      "claim_kind": "limitation",
+      "text": "The PixArt-Sigma-2048 fine-tuning data are 1K images upscaled to 2K, whereas evaluation uses native 2K images, creating a resolution-domain mismatch that the authors say contributes to the remaining quality gap.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0100",
+        "start_char": 26929,
+        "end_char": 27081,
+        "quote": "We attribute part of this gap to a resolution-domain mismatch: our fine-tuning dataset is at 1K (upscaled to 2K) while evaluation uses native 2K images."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "dataset_only",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-011",
+      "claim_kind": "result",
+      "text": "For MagicDrive-V2, pruning only spatial transformer blocks yields a reported 39% self-attention FLOPs reduction and 8% full-model FLOPs reduction.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0102",
+        "start_char": 27485,
+        "end_char": 27639,
+        "quote": "We prune only spatial transformer blocks and achieve a 39% self-attention FLOPs reduction (8% total FLOPs at the full-model level) as shown in  Tab.   4 ."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-012",
+      "claim_kind": "limitation",
+      "text": "The MagicDrive-V2 application prunes only independently processed spatial blocks, and the authors report a drop in FVD reflecting reduced temporal consistency.",
+      "source_locator": {
+        "document_sha256": "f50f7becfd7695c700b86807d2087a5f95f74f9d809e67454c3b14959d4da6e2",
+        "section_id": "sec-0103",
+        "start_char": 27836,
+        "end_char": 28049,
+        "quote": "Currently, CoReDiT is applied only to spatial transformer blocks in which each frame is processed independently. Consequently, we observed a drop in FVD, which reflects temporal consistency in the generated video."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": [
+    "The frozen paper does not name an EDGE CFP topic, so no workshop-topic mapping is asserted.",
+    "The Snapdragon result is reported as a per-block latency speedup and should not be treated as an end-to-end mobile speedup."
+  ]
+}

@@ -10,6 +10,8 @@ class InvestigationState(StrEnum):
     DRAFT = "draft"
     INPUTS_VALIDATED = "inputs_validated"
     DISCOVERING = "discovering"
+    CANDIDATES_FROZEN = "candidates_frozen"
+    SCREENING = "screening"
     CORPUS_FROZEN = "corpus_frozen"
     ANALYZING = "analyzing"
     REVIEWING = "reviewing"
@@ -72,6 +74,15 @@ _INVESTIGATION_TRANSITIONS = {
         InvestigationState.FAILED,
     },
     InvestigationState.DISCOVERING: {
+        InvestigationState.CANDIDATES_FROZEN,
+        InvestigationState.FAILED,
+    },
+    InvestigationState.CANDIDATES_FROZEN: {
+        InvestigationState.SCREENING,
+        InvestigationState.CORPUS_FROZEN,
+        InvestigationState.FAILED,
+    },
+    InvestigationState.SCREENING: {
         InvestigationState.CORPUS_FROZEN,
         InvestigationState.FAILED,
     },

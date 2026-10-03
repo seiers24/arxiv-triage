@@ -25,6 +25,7 @@ from .source import SourcePacket
 class CriticRubric(ContractModel):
     component: Text
     skill_hash: Sha256 | None
+    checks: list[Text]
 
 
 class ClaimVerdict(ContractModel):

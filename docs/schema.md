@@ -134,6 +134,91 @@ Source formats are `html`, `pdf_text`, or `abstract`; retrieval method is
 `direct` or `fallback`. Paper identity status is `unresolved`,
 `resolved_exact`, `resolved_probable`, or `ambiguous`.
 
+### Screening contracts
+
+Semantic screening operates only on an immutable, ordered `CandidateSet` after
+the active search completion rule succeeds. A genuine completed search may
+freeze an empty candidate set; provider failure or an exhausted search may not
+masquerade as a successful empty result.
+
+`ScreeningScope` contains exactly `schema_version`, `question`, ordered unique
+`inclusion_rules`, ordered unique `exclusion_rules`, and its self-hashed
+`scope_hash`. At least one inclusion rule is required. It contains no ranking,
+importance, novelty, or extension criteria.
+
+Each `CandidatePaper` contains `schema_version`, one hash-valid
+`paper_identity`, nullable `abstract`, non-empty unique `discovery_refs`, and
+its `candidate_hash`. `CandidateSet` contains `schema_version`,
+`investigation_id`, `search_plan_hash`, `discovery_ledger_hash`, `frozen_at`,
+the ordered unique candidate list, and its `candidate_set_hash`.
+
+`ScreeningTask` contains exactly:
+
+- schema/job/run/investigation identity;
+- `screening_batch_id`, `candidate_set_hash`, and positive `batch_ordinal`;
+- the hash-valid objective profile and screening scope;
+- an ordered, non-empty candidate batch;
+- a positive `batch_size_limit` that is not smaller than the batch;
+- `output_schema_version`; and
+- its self-hashed `input_hash`.
+
+Its job type is `paper_screen`. Candidate paper IDs and hashes are unique
+within the batch. An empty candidate set creates no screening task.
+
+Each `ScreeningDecision` contains `paper_id`, `candidate_hash`, `state`,
+`reason`, and `evidence_spans`. State is `selected`, `screened_out`, or
+`needs_review`. An evidence span contains `field` (`title` or `abstract`),
+`start_char`, `end_char`, and an exact `quote`; offsets use Python Unicode code
+points and must reconstruct from that exact candidate field. Abstract spans are
+invalid when the candidate abstract is null.
+
+`ScreeningRecord` contains exactly:
+
+```text
+schema_version, role, job_type, agent_run_id, investigation_id,
+screening_batch_id, candidate_set_hash, objective_profile_hash,
+screening_scope_hash, input_hash, decisions
+```
+
+Role/job are `paper_screener`/`paper_screen`. The one public gateway,
+`validate_screening_output(task, raw_output)`, owns parsing, identity/hash
+binding, exact span reconstruction, and atomic ordered coverage. Decision paper
+IDs and candidate hashes must equal the task candidates in the same order; a
+missing, duplicate, foreign, substituted, or reordered decision rejects the
+entire attempt.
+
+Physical run metadata adds required nullable `screening_batch_id`. Reader and
+critic runs require `paper_id` and null batch ID; screener runs require null
+paper ID and a batch ID; reviewer runs require both null. Screening uses the
+same two-attempt, transport/schema-only retry policy as other workers.
+
+Before `CorpusManifest` freezes, deterministic global validation requires one
+canonical screening decision for every frozen candidate in semantic mode.
+`selected` and `needs_review` route to `included`; `screened_out` routes to
+`excluded`; external identity failure may instead route to
+`membership_unresolved`. In explicitly declared authoritative-membership mode,
+semantic screening is bypassed and every listed workshop paper is included.
+
+### Terminal paper-state artifact
+
+Each included paper receives at most one immutable `PaperStateRecord` at
+`paper-state/<paper-id>.json` when its analysis chain becomes terminal. The
+record contains exactly:
+
+```text
+schema_version, investigation_id, paper_id, terminal_state,
+source_document_id, reader_run_id, critic_run_id, error, completed_at,
+state_hash
+```
+
+`terminal_state` is `complete`, `analysis_unresolved`, or `failed`.
+Complete and analysis-unresolved records require the exact frozen source,
+canonical reader run, and canonical critic run IDs and forbid `error`. A failed
+record requires `error`, forbids a canonical critic run, and preserves any
+source or reader run that completed before the failure. `state_hash` is the
+usual self-hash. This closes analysis accounting without rewriting the frozen
+`CorpusManifest`.
+
 ### Self-contained reader and critic tasks
 
 `ReaderTask` and `CriticTask` contain a required `source_text` string. Its
@@ -157,6 +242,11 @@ assessment has a required integer `score` from 0 through 5 and has no `label`
 field. Assessment evidence IDs are unique and may name only claims marked
 `supported` in that critic record. Human review is required exactly when
 `human_review_reasons` is non-empty; no duplicate boolean is serialized.
+
+`CriticRubric` contains `component`, nullable `skill_hash`, and ordered
+`checks`. The checks are embedded in the frozen task; `skill_hash` records
+provenance but is not a substitute for the instructions the tool-free worker
+must apply.
 
 ### Reviewer task and record
 
@@ -193,13 +283,49 @@ challenge or unresolved/failed accounting requires `ready_with_warnings`;
 otherwise it is `ready`. `validate_reviewer_output(task, raw_output)` is the
 single parsing, binding, accounting, and reference-resolution gateway.
 
+`ReviewerRubric` likewise contains `component`, nullable `skill_hash`, and
+ordered `checks`. Component checks may constrain comparisons and wording but
+cannot weaken accounting, reference resolution, or readiness rules.
+
+### Phase 2 workshop component contracts
+
+`WorkshopSpec` freezes the workshop identity, venue/year/date, authoritative
+URL, accepted population, track definitions, source precedence, and self-hash.
+`WorkshopEntry` preserves each displayed accepted-paper title, authors, track,
+poster number, exact authoritative-page span, identity resolution state, and
+self-hash. Only `resolved_exact` entries proceed automatically.
+
+`WorkshopCorpusManifest` binds the spec and authoritative request/response,
+preserves every entry and excluded non-paper class, and exposes component
+acquisition accounting. `WorkshopAccounting` contains exactly `declared`,
+`extracted`, `resolved`, and `identity_unresolved`; it enforces:
+
+```text
+resolved + identity_unresolved = extracted
+```
+
+It intentionally does not repeat analysis outcomes. The shared
+`CorpusAccounting` and immutable `PaperStateRecord` artifacts remain the only
+source for `complete`, `analysis_unresolved`, and `failed` counts.
+
+`WorkshopRankingPolicy` binds one exact objective-profile hash and contains a
+0-through-5 total-score threshold, criterion minimums, an uncertainty exclusion
+rule, and its self-hash. The workshop ranker embeds the complete validated
+policy plus its hash in the ranking artifact, then adds `top_tier` and visible
+`top_tier_failures` to the ordinary deterministic ranking rows. Embedding the
+policy lets the tool-free corpus reviewer independently reproduce each flag;
+the hash alone is provenance but not executable review input. The ranker
+selects all qualifying papers and never forces a top-k.
+
 ### Agent run, validation, outcome, and trace
 
 `AgentRun` is the complete physical-attempt projection. It contains the fields
 defined for `agent_runs` in the platform specification plus `schema_version` and
-`validation_hash`. Role/job pairs are `paper_reader`/`paper_read`,
-`critic`/`paper_critique`, and `reviewer`/`corpus_review`; paper workers require
-`paper_id`, while corpus roles require null. Attempts are 1 or 2. Status is
+`validation_hash`. Role/job pairs are `paper_screener`/`paper_screen`,
+`paper_reader`/`paper_read`, `critic`/`paper_critique`, and
+`reviewer`/`corpus_review`. Screeners require null `paper_id` and a non-null
+`screening_batch_id`; reader and critic runs require the inverse; reviewer runs
+require both null. Attempts are 1 or 2. Status is
 `running`, `output_received`, `invalid`, `completed`, `failed`, or
 `interrupted`. Every optional artifact path and hash is an all-or-null pair.
 Terminal states require completion time and duration. `completed` requires raw,

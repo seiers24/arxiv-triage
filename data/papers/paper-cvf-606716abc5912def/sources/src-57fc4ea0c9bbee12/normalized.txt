@@ -1,0 +1,631 @@
+This CVPR Workshop paper is the Open Access version, provided by the Computer Vision
+Foundation. Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+
+Diagonal-Tiled Mixed-Precision Attention for Efﬁcient Low-Bit MXFP Inference
+
+Yifu Ding1,2 Xinhao Zhang4 Yinglei Wang5 Yuanpei Chen5 Jinyang Guo1,3 *
+1
+State Key Laboratory of Complex & Critical Software Environment (SKLCCSE), Beihang University
+2
+School of Computer Science and Engineering, Beihang University
+3
+School of Artiﬁcial Intelligence, Beihang University 4 Beijing Jiaotong University
+5
+Intelligent Science & Technology Academy of CASIC, China
+yifuding@buaa.edu.cn, 25120417@bjtu.edu.cn, jinyangguo@buaa.edu.cn
+
+Abstract Table 1. Comparison of representative MXFP data formats, in-
+cluding their block sizes, element formats, and shared scale for-
+mats.
+Transformer-based large language models (LLMs) have
+demonstrated remarkable performance across a wide range Block Element Scale
+of real-world tasks, but their inference cost remains pro- Name
+Size Format Bits Format Bits
+hibitively high due to the quadratic complexity of attention MXFP8 32 FP8 (E4M3 / E5M2) 8 E8M0 8
+and the memory bandwidth limitations of high-precision MXFP4 32 FP4 (E2M1) 4 E8M0 8
+operations. In this work, we present a low-bit mixed- NVFP4 16 FP4 (E2M1) 4 E4M3 8
+precision attention kernel using the microscaling ﬂoating-
+point (MXFP) data format, utilizing the computing capabil-
+ity on next-generation GPU architectures. Our Diagonal- MXFP4, and NVFP4, achieves lower bitwidth with better
+Tiled Mixed-Precision Attention (DMA) incorporates two quantization quality [1, 12]. These advances make low-
+kinds of low-bit computation at the tiling-level, and is a precision LLM inference practical in real deployment.
+delicate fused kernel implemented using Triton, exploit- Despite this promising hardware support, effectively
+ing hardware-level parallelism and memory efﬁciency to leveraging MX formats to accelerate attention in LLMs
+enable fast and efﬁcient inference without compromising presents signiﬁcant challenges. Challenge 1: low-bit quan-
+model performance. Extensive empirical evaluations on tization can lead to severe accuracy degradation. Directly
+NVIDIA B200 GPUs show that our kernel maintains gen- applying 4-bit MXFP formats to attention computation
+eration quality with negligible degradation, and meanwhile causes substantial quantization error (see Tab. 2). While
+achieves signiﬁcant speedup by kernel fusion. We release recent work [20] introduces smoothing techniques to miti-
+our code at https://github.com/yifu-ding/MP-Sparse-Attn. gate quantization errors, it requires additional ﬂoating-point
+GEMV operations that reduce kernel throughput. Challenge
+2: unfused operations in quantization process undermine
+1. Introduction the efﬁciency of low-bit computation. Our experiment re-
+veals that without kernel fusion, the quantization and format
+The rapid development of large language models (LLMs) conversion brings redundant memory accesses and kernel
+has created a growing demand for faster throughput. In- launch cost that cannot be underestimated (refer to Tab. 7).
+side the transformer architecture, self-attention becomes the
+In this paper, we propose Diagonal-Tiled Mixed-
+main inference bottleneck because its cost scales quadrati-
+Precision Attention (DMA), the ﬁrst attention workﬂow
+cally with sequence length [4, 5, 10, 11]. To reduce this
+designed to operate hybrid MX formats. DMA addresses
+cost, prior work has explored several directions, includ-
+the above challenges via two key techniques: First, we
+ing quantization-based compression [6], structured spar-
+adopt a tiling-level mixed-precision design that partitions
+sity [7], and kernel-based approximations such as linear at-
+the attention matrix into low- and high-precision regions
+tention [14]. At the same time, modern GPU architectures
+to retain the most salient information for critical tokens in
+are adding stronger support for low-precision computation.
+high-precision, while leveraging faster low-precision MX
+In particular, NVIDIA Blackwell introduces native sup-
+formats elsewhere to ensure the speedup. Second, we build
+port for microscaling number formats, including MXFP8,
+a full-stack attention computation workﬂow into a fused
+* Corresponding author. memory-efﬁcient kernel to ensure the end-to-end efﬁciency.
+
+3420
+It covers quantization, microscaling transformation, low-bit to 4× compared to FP16 while still maintaining compet-
+encoding and packing, and attention computation. This fu- itive numerical accuracy in mixed-precision settings [12].
+sion allows ﬁne-grained parallel execution on GPU thread However, despite these theoretical advantages, systematic
+blocks without storing intermediate results, signiﬁcantly re- and practical software support for MXFP-based attention
+ducing memory pressure and synchronization overhead. kernels remains limited, especially for end-to-end pipelines
+We evaluate DMA on Longbench dataset. Experimental that operate below the standard IEEE precision formats.
+results show that DMA achieves lossless generation quality This motivates our ﬁrst contribution: a full-stack low-bit at-
+compared to full-precision attention baseline. Furthermore, tention pipeline for MXFP formats (e.g., MXFP8, MXFP4,
+our ablation studies demonstrate the effectiveness of mixed- NVFP4), including efﬁcient quantization and packing, low-
+precision tiling, quantization granularity, and diagonal win- bit computation combined with OnlineSoftmax technique.
+dow design in balancing performance and precision.
+Our main contributions are summarized as follows: 3. Preliminaries
+• We propose Diagonal-Tiled Mixed-Precision Attention
+(DMA), a new attention workﬂow that operates with hy- 3.1. MXFP Data Format
+brid MX formats for efﬁcient LLM inference. Microscaling (MX) formats decompose a tensor into low-
+• We develop a fully fused GPU kernel that integrates quan- precision elements and a shared exponent scale per block
+tization, microscaling transformation, and attention com- (typically 32 or 16 elements). This approach allows
+putation into one end-to-end workﬂow, reducing memory dynamic range coverage much larger than conventional
+access and kernel launch overhead. ﬂoating-point formats while signiﬁcantly reducing storage
+• We conduct extensive experiments and detailed ablation and compute cost. Table 1 summarizes the MX formats
+studies to show the lossless generation quality of our ker- used in this work. MX formats adopt a shared scale in
+nel, and offer practical insights into the trade-off between E8M0 for every 32 elements per block and are named by
+efﬁciency and accuracy. preﬁxing “MX” to the element data format, i.e., MXFP8
+(with FP8 data of E5M2/E4M3) or MXFP4 (FP4 data of
+2. Related Works E2M1). Since the exponent of FP32 uses 8-bit, the rep-
+resentable range of these formats covers that of FP32, en-
+2.1. Efﬁcient Attention suring compatibility with high-dynamic-range input distri-
+Under the context of large language models (LLMs), the butions. While NVFP4 has FP8 (E4M3) shared scale for
+computational overhead of attention scales quadratically every 16 elements in each block. The ﬁner-grained scal-
+with sequence length, making efﬁcient attention a criti- ing and quantization granularity signiﬁcantly reduces quan-
+cal research direction. FlashAttention [5] introduced a tization error compared to MXFP4, enhancing downstream
+highly efﬁcient attention kernel that uses tiling and an on- accuracy.
+line softmax approach to eliminate the need to buffer full
+attention matrices. Quantization-based approaches such as 3.2. Online Softmax
+INT-FlashAttention [3] and SageAttention [18] series com- To enable faster attention computation by dividing them
+press attention operands into low-bit formats. They are into blocks, many efﬁcient attention kernels uses Online-
+plug-and-play quantized attention kernels that achieves 2– Softmax [5, 18] to ensure the equivalence of the results. For
+3× speedup over FlashAttention. Sparse attention methods example, FlashAttention avoids materializing and storing
+like SparseAttention [19] limit the number of active token the full attention matrix by computing the attention output
+pairs to reduce complexity while preserving important in- in a tile-wise fashion. It fuses the attention score compu-
+formation. As a lightweight sparse attention alternative, tation, softmax normalization, and value aggregation into a
+TurboAttention [9] combines head-wise quantization and single memory-efﬁcient kernel, using online row-wise soft-
+sparsity-aware softmax approximation to deliver 1.2–1.8× max.
+attention speed up and 4× KV cache compression. Each attention head is processed in parallel across
+blocks. LQ , LK are the sequence lengths of query and
+2.2. MXFP Quantization
+key/value matrices, respectively. D is the head dimen-
+The recent introduction of Microscaling Floating-Point sion. We divide Q into tiles of size BM . This results in
+(MXFP) formats is an advancement over traditional Block LQ /BM  thread blocks executing in parallel per batch per
+Floating Point (BFP), designed to improve the numerical head, each responsible for a tile of query Qi ∈ RBM ×D .
+efﬁciency and deployment ﬂexibility of low-precision com- Within each thread block, it iterate over the key/value for
+putations in AI workloads [13]. As supported by NVIDIA’s Lk /BN  tiles. Let Qi ∈ RBM ×D denote the ith query
+latest Blackwell GPU architecture, MXFP4 and MXFP8 al- tile, and Kj , Vj ∈ RBN ×D denote the j th key and value
+low for signiﬁcantly higher theoretical throughput, up to 2× tiles respectively. For each (i, j) tile pair, the attention score
+
+3421
+Table 2. Quantization error of attention score using different data           
+                      
+formats. “+” means combining with tokenwise quantization.
+
+Format Cos Sim (↑) PSNR (↑) L1 (↓) RMSE (↓)
+MXFP8 0.988 71.70 0.246 0.003            
+
+MXFP4 0.714 60.82 0.924 0.009
+NVFP4 0.982 69.37 0.309 0.003
+NVFP4+ 0.983 69.63 0.312 0.003            
+
+         
+Ours 0.988 71.70 0.248 0.003                       
+
+matrix is computed as:
+           
+
+Qi
+Sij = Q̃i × K
+j , Q̃i = √ . (1)
+D
+           
+
+It then applies OnlineSoftmax across key/value tiles to elim-         
+inate the need to store the full matrices of intermediate re-
+sults. It tracks the running maximum of Si in mi and accu- Figure 1. Visualization of quantization error of MXFP4 and
+mulates the intermediate attention outputs Oi−1 across all NVFP4 format for query, key and attention score.
+previous tiles, which is normalized by the ratio of the adja-
+cent maximum values. The accumulated output Oi and nor- gions (Sec. 5.2), and a fused quantization kernel to avoid the
+malization factor li are updated incrementally, tile by tile. overhead of separate low-bit pre-processing steps (Sec. 5.3).
+We ﬁnalize the results of the ith query tile by diag(li )−1 Oi .
+5.1. Overall Workﬂow
+4. Challenges in Low-bit MXFP Attention We follow the tiled execution pattern of FlashAttention to
+Although full 4-bit quantization can reduce computation partition attention into sub-tensors for memory-efﬁcient and
+and memory cost, directly applying MXFP4 to the QK  parallel computation. Built on this workﬂow, DMA intro-
+leads to clear degradation in attention quality. As shown duces a quantization-aware attention kernel that supports
+in Fig. 1, the quantization error of MXFP4 is much pro- tile-level mixed precision on GPU tensor cores with na-
+nounced than that of NVFP4. Table 2 conﬁrms this trend tive MXFP support. Meanwhile, we fuse the low-bit pre-
+quantitatively. Lower-bitwidth MX formats introduce larger processing pipeline into a single Triton implementation. In-
+quantization errors under all metrics. Direct MXFP4 causes stead of executing quantization, low-bit encoding, packing,
+a clear drop in attention-score ﬁdelity, with cosine similar- and scale conversion as separate operators, DMA performs
+ity decreasing from 0.988 to 0.714, PSNR from 71.70 to them within the kernel, which reduces intermediate memory
+60.82, and L1 error increasing from 0.246 to 0.924. NVFP4 trafﬁc, kernel launch overhead, and synchronization cost.
+is notably more stable, and adding token-wise quantization This fused design is important for maintaining the end-to-
+on top of it brings only marginal changes. end efﬁciency of mixed-precision attention. The overall
+We observe that the error exhibits a clear channel-wise framework is illustrated in Fig. 2.
+structure in query and key matrices, indicating that some 5.2. Diagonal-Tiled Attention Workﬂow
+feature dimensions are consistently more sensitive to low-
+bit quantization than others. However, this channel dimen- We propose Diagonal-Tiled Mixed-Precision strategy to
+sion is exactly the reduction axis in the QK  multiplica- mitigate the accuracy degradation. As detailed in Sec. 4,
+tion. Therefore, it is unable to use channel-wise scaling in a low-bit quantization introduces signiﬁcant quantization er-
+fused low-bit attention kernel without introducing substan- ror, and the most inﬂuential scores typically concentrate
+tial implementation complexity. along the diagonal of the attention matrix. Prior solutions,
+such as SageAttention2 [17], compensates for quantization
+5. Diagonal-Tiled Mixed-Precision Attention error by performing additional GEMV operations between
+full-precision K and the mean-pooled query vector, which
+In this section, we present the overall design of our method, brings extra full-precision computation overhead. To mit-
+which is built on the typical tiling-style of FlashAttention, igate this, we propose a mixed-precision strategy in tiling-
+but extends it with two components tailored for low-bit level that selectively retains higher-precision tiles near di-
+MXFP inference: a diagonal-tiled mixed-precision compu- agonal, while aggressively quantizing peripheral regions to
+tation scheme to preserve the most sensitive attention re- ensure the overall throughput.
+
+3422
+   
+          
+ Sign S = Signbit(X) S
+mul
+Abs X_abs = Abs(X)
+X_abs
+div       
+             Cmp 00 01 10 11 E
+      Div,Exp X_norm = X_abs/exp2(E-1)
+            
+Reshape  Add,Cmp,And E==0 && X_norm>0.25
+E!=0 && X_norm>1.25
+          Compute
+    shared   0 1 M
+ Lsft,Or S<<3|E<<1|M
+       Encode 
+type S E E M
+ to E2M1
+    Pack  
+
+       S E E M S E E M (uchar)
+    
+
+OnlineSoftmax
+    
+Reshape 
+
+ 
+    
+   Compute   
+    
+ shared     
+ Encode  
+ 
+ 
+to E8M0       
+    
+   Cvt  
+     
+  
+
+Figure 2. Overview workﬂow of our Diagonal-Tiled Mixed-Precision Attention. It ﬁrst applies fused mixed-precision quantization to
+produce low-bit and high-bit Q and K representations, and then performs diagonal-tiled mixed-precision attention, using higher precision
+near the diagonal and lower precision elsewhere to balance accuracy and efﬁciency.
+
+Algorithm 1 Diagonal-Tiled Mixed-Precision Attention are aggressively quantized. Taking causal attention as an
+BM ×D BM ×D example, we detail the workﬂow in Algorithm 1 in two
+Input: Q̃ ∈ RFP4 , Q̃h ∈ RFP8
+l
+are pre-processed
+BN ×D BN ×D phases.
+with softmax scale. Kl ∈ RFP4 . Kh ∈ RFP8 .
+BN ×D
+V ∈ RFP16 . BM , BN : tile sizes in sequence dimen-
+sion for query and key, respectively. nQ : thread block Phase 1. Starting from the left columns in head dimen-
+index. T : diagonal window size for high-precision. sion. Low-precision attention tiles are computed over the
+1: Initialize: m0 ← −∞, l0 ← 1, O0 ← 0 lower triangular region using low-bit quantized query and
+Phase 1: Low-precision tiles key matrices. We follow the standard OnlineSoftmax to in-
+2: for i ← 0 to (nQ BM − T )/BN  do crementally accumulate the intermediate output Oi . The
+3: Si ← Q̃lnQ × Kl i
+ﬁrst phase terminates after completing the computation for
+4: Oi , li , mi ← OnlineSoftmax(Si , Vi , Oi−1 , li−1 , mi−1 )the ﬁrst (nQ BM − T )/BN  tokens.
+5: end for
+Phase 2: High-precision tiles in diagonal window
+6: for i ← (nQ BM − T )/BN  to nQ BM /BN  do
+Phase 2. Key/value tiles between (nQ BM − T )/BN 
+ Skip upper triangular part for causal attention and nQ BM /BN  will be processed in this phase. To ob-
+7: Si ← Q̃nQ × Ki
+h h tain a more precised attention weight, Q̃hnQ , Khi of the high-
+8: Δi ← (nQ BM + IBM ) < (iBN + IBN ) precision copy will be used. In causal attention, Δi masks
+9: Si ← Si − inf ·Δi scores within the current tile that correspond to the upper
+ Mask upper triangular of the global attention triangular region of the global attention matrix, where IBM
+10: Oi , li , mi ← OnlineSoftmax(Si , Vi , Oi−1 , li−1 , mi−1 )and I B N
+are indices within each tile. It ensures that no
+11: end for query attends to future positions globally. Final outputs are
+12: OnQ ← diag(li ) Oi −1 normalized by the accumulated softmax scaling factors li .
+BM ×D
+Output: Causal attention output OnQ ∈ R This diagonal-tiled execution maintains the performance
+and memory beneﬁts of quantized attention while preserv-
+ing the numerical precision of the attention mechanism to
+keep the generation quality.
+Based on the tiling-wise attention paradigm, we in-
+troduce a diagonal window with size T , determining the
+amount of tokens for higher-precision computation along Compatibility with Non-Causal Attention While Algo-
+the token dimension. For each query tile indexed by nQ , rithm 1 illustrates the workﬂow of causal attention, our
+only the last T tokens are computed using higher-precision method is also compatible with non-causal attention. In
+representations of query and key, while all preceding tiles the non-causal attention workﬂow, the low-bit computation
+
+3423
+covers both the lower and upper triangular regions of the Algorithm 2 Fused Mixed-Precision Quantization
+attention matrix, excluding the diagonal window. Input: X ∈ RB×D : input FP16 tensor. B: size of a tile
+The structure of the workﬂow remains similar to that of in sequence dimension, D: size of head dimension. V1 ,
+the causal case, but the iteration range of Phase 1 differs: the V2 : sizes of a block for low-/high-precision MXFP for-
+tile index i spans two disjoint intervals. Speciﬁcally, tiles mats. l1 , l2 , u1 , u2 : lower/upper bound for both ele-
+from 1 to (nQ BM − T /2)/BN  corresponds to the lower ments formats. emax : the exponent of the largest nor-
+triangular region, and tiles from (nQ BM + T /2)/BN  mal number of the element format.
+to nK BN /BN  covers the upper triangular. During this Step 1: Pre-process softmax scale
+phase, the attention weight Si is computed using the low- 1: if is Query then
+precision copies of the query and key matrices. In Phase 2: Xsm-scaled ← X · log √2
+e
+2, tokens located within the diagonal window [(nQ BM − D
+3: end if
+T /2)/BN , (nQ BM + T /2)/BN ] are reprocessed using
+Step 2: Compute the quantization scale
+high-precision copies of the inputs. The results are then ac-
+4: Sq ← maxD (|Xsm-scaled |)/(448 × 6)
+cumulated into Oi computed in Phase 1. Once all key/value
+5: Xscaled ← Xsm-scaled /Sq
+tiles have been iterated over, the ﬁnal attention output is cal-
+Step 3: Compute shared scale for low precision format
+culated by diag(li )−1 Oi .
+6: Xscaled ← Xscaled  reshape to [B, D//V1 , V1 ]
+This partitioning is valid due to the equivalence un- 
+7: SFP4 ← maxD (|Xscaled |)/u1
+der column-wise transformations in matrix multiplication.
+8: Xclamped ← clamp(Xscaled /SFP4 , l1 , u1 )
+Speciﬁcally, the dot-product attention is a linear operation
+Step 4: Encode Xclamped to E2M1
+with respect to the key-value axis, and the output remains
+9: XFP4 ← Algorithm 3 (Xclamped )
+mathematically correct as long as all tiles of the attention
+Step 5: Pack two FP4 into one UINT8 along D
+matrix are covered and accumulated appropriately. Hence,
+10: if pack along last dimension then
+splitting the computation into lower, upper triangular and
+11: XFP4 ← XFP4  reshape to [B, (D + 1)//2, 2]
+diagonal regions does not compromise correctness, pro-
+12: L, H ← XFP4 [:, :, 0], XFP4 [:, :, 1]
+vided the transformations are applied consistently across
+13: Xpacked ← (H 4) | L
+tiles.
+14: end if
+5.3. Dual MXFP Quantization Kernel Fusion Step 6: Compute shared scale for high precision format
+
+15: Xscaled ← Xscaled  reshape to [B, D//V2 , V2 ]
+In this section, we describe the fused mixed-precision quan- 
+16: Sshared ← log2 (maxD |Xscaled |) − emax
+tization kernel used in DMA. The goal is to convert the in- 
+
+put tensor into both low-bit and high-bit MXFP representa- 17: XFP8 ← clamp(Xscaled /2Sshared , l2 , u2 )
+tions within a single fused pipeline, so that the subsequent Step 7: Convert shared scale into E8M0
+mixed-precision attention kernel can directly consume the 18: SFP8 ← clamp(Sshared + 127, 0, 254)
+quantized outputs without launching another kernels. The Output: Packed FP4 tensor Xpacked , FP8 tensor XFP8 ,
+overall procedure is summarized in Algorithm 2. shared scale of NVFP4 SFP4 , shared scale of MXFP8
+SFP8 , quantization scale Sq
+Pre-process softmax scale (Step 1). Before quantization,
+we ﬁrst apply the standard softmax scaling factor to the
+query tensor. Speciﬁcally, when the input is Q, we mul- is represented in FP4, with a dynamic range of [−6, 6].
+√ Therefore, the representable range of NVFP4 is the product
+tiply it by log2 e/ D, where D is the head dimension.
+This incorporates the softmax normalization factor into the of these two bounds. To fully utilize the available dynamic
+quantized computation in advance, so that the subsequent range and accommodate potential outliers without resorting
+QK  accumulation is already aligned with the scaled at- to clipping, we compute the quantization scale in Step 2
+tention score formulation. Since our kernel computes the (line 4) of Algorithm 2, scaling the original tensor into this
+matrix product in base-2 arithmetic, folding this factor into representable range prior to quantization.
+the query in advance avoids an extra scaling step after accu-
+mulation and simpliﬁes the fused implementation. Compute shared scale (Step 3 and Step 6). We ﬁrst re-
+shape the scaled input tensor along the packing dimension
+Quantization scale (Step 2). We fuse quantization with into a new matrix, where each row groups the V1 or V2 ele-
+MXFP number format conversion at the kernel level. Fol- ments that share a common scale in the MXFP format. For
+lowing the two-level scaling strategy in SageAttention3, we NVFP4, the shared scale is computed directly as the ab-
+note that the shared scale in NVFP4 uses the FP8 (E4M3) solute maximum of each group. For MXFP4 and MXFP8
+format, which ranges from [−448, 448], while each element formats, however, the scale is represented in integer E8M0
+
+3424
+Algorithm 3 Encode FP16 tensor into E2M1 format scenarios. For example, for input value 5, we prefer round-
+ing to 4 to have mantissa bit as 0, rather than 6. So the
+Input: X ∈ RB×D
+FP16 ∈ [−6.0, 6.0]: clamped FP16 tensor.
+comparison to midpoint threshold should be greater but not
+Step 4.1: Extract signbit
+equal. In ﬁnal, step 4 consrtucts the 4-bit representation us-
+1: S ← sign(X)
+ing bitwise shift and OR operations.
+Step 4.2: Compute 2-bit exponent
+2: Xabs ← |X|
+3: E ← I[Xabs ≥ 1] + I[Xabs ≥ 2] + I[Xabs ≥ 4] Packing (Step 5). We encode two FP4 values into a single
+Step 4.3: Compute 1-bit mantissa byte, assigning the value with the higher index to the most
+4: bias ← 1 signiﬁcant 4 bits and the other to the least signiﬁcant 4 bits.
+5: Xnorm ← Xabs /2E−bias This compact representation improves memory bandwidth
+6: M ← I[E = 0]·I[Xnorm > 0.25]+I[E = 0]·I[Xnorm > utilization.
+1.25]
+Step 4.4: Assemble quantized FP4 integer Scale Conversion into E8M0 (Step 7). The shared scale
+7: XFP4 ← (S 3) | (E 1) | M for MXFP8 should be in E8M0 (unsigned 8-bit integer) for-
+Output: Quantized tensor XFP4 ∈ RB×DFP4 mat according to the ofﬁcial document of MXFP comput-
+ing. Therefore, we add 127 before clamping it into 0 to
+254, ensuring it lies within the valid exponent range of E8.
+format. To maximize the representable range, we need to
+normalize the input exponent so that the largest exponent in 6. Experiments
+the data aligns with the maximum representable exponent We conduct a comprehensive evaluation of the proposed
+(denoted as emax ) of the low-bit element format. Conse- DMA operator in terms of both accuracy and efﬁciency. We
+quently, the shared exponent Sshared stores this offset from report results across a range of tasks and datasets to assess
+the input’s exponent to emax . In E5M2, the maximum ex- the overall performance. In addition, we perform detailed
+ponent emax is 15 (i.e., (11110)2 = 30 with a bias of 15, ablation studies to analyze the impact of key design choices,
+excluding reserved patterns with all 1 bits to represent in- including numerical precision, quantization granularity, di-
+ﬁnite and NaN). In E4M3, emax = 8 (i.e., (1111)2 = 15 agonal window size, and kernel fusion strategies.
+with a bias of 7). Notably, E4M3 does not strictly follow
+IEEE-754, its normal numbers allows exponent bits set to 6.1. Settings
+all 1. The division of exponent shared scale allows full uti-
+Models and Datasets. We evaluate our method using
+lization of the exponent range within the limited bit budget
+LLaMA-3.1-8B and LLaMA-3.2-3B [8]. Performance
+of MXFP format.
+is measured on LongBench [2], which focuses on long-
+context understanding with sequence lengths ranging from
+Encoding of FP4 format (Step 4). Algorithm 3 shows 2.5K to 30K tokens. We report results across various sub-
+the steps to quantize an FP16 tensor into E2M1 format (1- tasks to assess general long-context capabilities. For all re-
+bit sign, 2-bit exponent, 1-bit mantissa). We begin by ex- ported metrics, higher values indicate better performance.
+tracting the sign bit (Step 4.1). The 2-bit exponent is de-
+termined by thresholding the absolute value of the input Implementation. We implement DMA in Triton [15]. We
+against {1, 2, 4}, yielding exponent values in {0, 1, 2, 3}, compare our method with the native attention kernel, which
+which can be represented by 2 bits (Step 4.2). We employ refers to the SDPA kernel originally supported in PyTorch
+the Kronecker delta function I[·] in line 3 and 6, which re- and computed in BF16 format [16]. All experiments are
+turns 1 if the condition is true and 0 otherwise. In this way, conducted on a single NVIDIA B200 GPU.
+subnormal values are assigned E = 0. To compute man-
+tissas (Step 4.3), We normalize the input by the implied
+6.2. Accuracy
+scale factor and assign the mantissa bit to 1 if Xnorm ex- Performance on LongBench We evaluate our method
+ceeds 0.25 (the midpoint of 0 and 0.5). For normal values on LongBench to assess long-context language understand-
+(E = 0), the mantissa is set to 1 if Xnorm exceeds the mid- ing performance. Table 3 shows that our method im-
+point of the two representable values under that exponent. proves the average score over the native attention base-
+For example, when E = 3, E2M1 can represent 4 and 6, line on both LLaMA3.1-8B and LLaMA3.2-3B. Speciﬁ-
+which correspond to normalized values of 1 and 1.5, making cally, for LLaMA3.1-8B, the average score improves from
+1.25 the comparison threshold for mantissa. To implement 44.11 to 46.43. For LLaMA3.2-3B, the average score im-
+roundTiesToEven according to the standard, we prefer proves from 35.84 to 37.20. The gains are broad across
+rounding to even mantissas (i.e., M = 0) in tie-breaking many tasks, including repobench-p, samsum, trec,
+
+3425
+Table 3. Comparison of attention implementations on LLaMA3.2- pared with the 128/128 setting, this suggests that a larger
+3B and LLaMA3.1-8B. “Native” refers to SDPA implementation block size is less efﬁcient in our current implementation.
+supported by PyTorch.
+Table 4. Latency breakdown of different block-scale types and
+LLaMA3.1-8B LLaMA3.2-3B conﬁgurations. “MP Size” denotes the mixed-precision block size
+Task Native Ours Native Ours used for the higher-bit diagonal and sink blocks.
+2wikimqa 39.15 32.54 30.75 36.33
+Format MP Size Attn (ms) Quant (ms) Total (ms)
+dureader 28.40 32.93 28.11 33.04
+gov report 33.87 34.89 32.26 33.04 MXFP4 – 12.491 0.242 12.980
+NVFP4 – 12.941 0.204 13.404
+hotpotqa 49.89 50.49 46.18 48.59
+MXFP8 – 16.480 0.044 16.771
+lcc 49.46 56.96 42.98 45.54
+Ours 128 7.110 0.382 7.776
+lsht 41.50 44.50 26.75 30.75
+Ours 256 15.056 0.382 15.720
+multi news 26.16 27.07 25.56 21.78
+multiﬁeldqa en 52.26 52.65 46.84 47.87
+multiﬁeldqa zh 57.57 58.81 48.06 53.62
+6.4. Ablation Study
+musique 25.82 26.81 20.35 25.77
+narrativeqa 25.28 26.70 19.76 25.44 Mixed-Precision Block Tile Sizes. We conduct ablation
+passage count 4.02 6.22 3.40 1.50 experiments to evaluate the impact of different block tile
+passage retrieval en 99.00 96.00 80.00 37.00 sizes on the similarity between the quantized attention ma-
+passage retrieval zh 92.14 85.50 8.25 10.50 trix and its full-precision counterpart. As shown in Tab. 5,
+qasper 42.64 43.05 32.13 39.62 we report the similarity before and after quantization to
+qmsum 23.47 24.67 22.52 23.63 show the representation errors under varying diagonal and
+repobench-p 42.23 54.00 44.14 50.15 sink tile conﬁgurations, including Cosine Similarity, Rel-
+samsum 36.60 43.99 34.79 42.74 ative L1 Distance, Root Mean Square Error (RMSE), and
+trec 65.00 71.50 62.50 69.50 Peak Signal-to-Noise Ratio (PSNR). The Bithigh % column
+triviaqa 77.01 87.89 83.68 88.13 denotes the percentage of values in the attention matrix that
+vcsum 14.80 17.92 13.65 16.69 compute in high-precision.
+Avg. 44.11 46.43 35.84 37.20 We observe that increasing the tile size from 128 to 512
+improves similarity metrics marginally. But it leads to a
+signiﬁcant degradation in throughput due to reduced paral-
+and triviaqa. In particular, repobench-p improves lelism and slower computation as shown in Tab. 4. Based
+from 42.23 to 54.00 on LLaMA3.1-8B and from 44.14 to on this trade-off, we use the 128/128 conﬁguration as the
+50.15 on LLaMA3.2-3B. The average results across both default setting in the following experiments.
+models indicate that our method preserves, and in most
+cases improves, long-context accuracy compared with the Kernel Fusion We evaluate the contribution of each ker-
+native implementation. nel fusion component in Tab. 6. The fully unfused baseline,
+which executes all quantization-related steps separately, in-
+6.3. Efﬁciency curs a latency of 7262.41 μs for sequence length L = 2k
+Table 4 reports the latency breakdown of different formats and 22628.96 μs for L = 8k. When only in-kernel FP16-to-
+and block-scale conﬁgurations. We compare our imple- MX encoding is enabled, the latency is reduced to 802.90 μs
+mentation with several ﬁxed-format baselines, including for L = 2k and 1113.77 μs for L = 8k. After further
+MXFP4, NVFP4, and MXFP8. For each setting, we report enabling FP4 packing, which packs two FP4 values into
+the attention time, quantization overhead, and total runtime. one uint8, the latency is further reduced to 740.64 μs for
+Among all evaluated settings, our conﬁguration with di- L = 2k and 942.67 μs for L = 8k. When scale conversion
+agonal and sink sizes set to 128 achieves the lowest total of microscaling factors to the e8m0 format is also fused into
+latency, at 7.776 ms. This is lower than MXFP4 (12.980 the kernel, the latency drops substantially to 179.97 μs for
+ms), NVFP4 (13.404 ms), and MXFP8 (16.771 ms). In par- L = 2k and 299.69 μs for L = 8k. Finally, after integrating
+ticular, the main reduction comes from the attention kernel mixed-precision quantization into a single fused kernel, de-
+time, which is 7.110 ms in our 128/128 setting, compared noted as MP, the latency is further reduced to 97.87 μs for
+with 12.491 ms, 12.941 ms, and 16.480 ms for the three L = 2k and 282.46 μs for L = 8k, achieving the best over-
+baselines, respectively. We also evaluate a larger block- all performance. Compared with the fully unfused baseline,
+scale conﬁguration with diagonal and sink sizes set to 256. this corresponds to a 74.2× speedup for L = 2k and an
+In this case, the total latency increases to 15.720 ms. Com- 80.1× speedup for L = 8k.
+
+3426
+Table 5. Similarity metrics under different token numbers for di- Table 8. Performance comparison under different quantization
+agonal and sink windows. granularities. Latency are reported in milliseconds.
+
+Diag. Sink Bithigh (%) Cos Sim ↑ Rel. L1 ↓ RMSE ↓ PSNR ↑
+Granu. Latency ↓ Cos Sim ↑ Rel. L1 ↓ RMSE ↓ PSNR ↑
+- - 0.0 0.778 0.620 0.065 43.715
+Per-Tensor 6.276 ms 0.732 0.560 0.067 43.479
+- - 100.0 0.819 0.547 0.059 44.568
+Per-Block 6.366 ms 0.736 0.558 0.067 43.531
+0 128 1.15 0.781 0.780 0.072 42.817 Per-Token 7.131 ms 0.822 0.539 0.059 44.657
+128 0 1.15 0.782 0.644 0.066 43.635
+128 128 2.30 0.822 0.539 0.059 44.657
+512 512 9.22 0.826 0.542 0.058 44.731
+2048 2048 36.87 0.852 0.521 0.054 45.352 tency and kernel output precision. As shown in Tab. 8, we
+evaluate four granularity settings: Per-Tensor, Per-Block,
+Table 6. Ablation study of kernel fusion components to analyze and Per-Token. Latency is measured using the 5 warmups
+their effect on throughput (TOPS) and latency. Encode: encoding and average of 10 runs. The results show that ﬁner granu-
+FP16 to FP4/FP8 MX format. Pack: packing two FP4 values to larity, such as Per-Token, achieves the highest output simi-
+one UINT8. Scale Cvt.: converting microscaling scalar to E8M0 larity before and after quantization, as indicated by higher
+format. MP: fusing quantization for mixed bitwidth to a single
+Cosine Similarity (0.822), lower RMSE (0.059), and higher
+kernel.
+PSNR (44.657), but it also incurs the highest latency (7.131
+Encode Pack Scale Cvt. MP L = 2k (μs) L = 8k (μs) ms). In contrast, Per-Tensor and Per-Block offer lower la-
+    7262.41 22628.96 tency but exhibit larger quantization errors. Therefore, the
+    802.90 1113.77 choice of quantization granularity depends on the task re-
+    740.64 942.67 quirement, speciﬁcally whether latency or output quality is
+    179.97 299.69
+    97.87 282.46
+prioritized.
+
+Table 7. Latency breakdown of the non-fused MX encoding
+7. Conclusion
+pipeline and our fused implementation. In this paper, we present DMA, a diagonal-tiled mixed-
+Operator Time Time (%) precision attention method for low-bit MXFP attention
+computation for efﬁcient LLM inference. DMA improves
+Not fused 18.320 ms –
+the accuracy of low-bit attention by preserving more sensi-
+- Element encoding 17.742 ms 100.0%
+MinOps 2.110 ms 11.89%
+tive diagonal regions in higher precision, while keeping the
+ArgMinOps 2.054 ms 11.58% remaining regions in efﬁcient low-bit formats. Combined
+Direct Copy 1.256 ms 7.08% with a fused dual-MXFP quantization kernel, our design re-
+CompareEq 890.18 us 5.02% duces quantization preprocessing overhead and maintains
+AddOps 810.56 us 4.57% practical efﬁciency. Experimental results show that DMA
+MulFunctor 755.10 us 4.26% provides a better balance between accuracy and latency.
+Memcpy / Memset 206.85 us 1.17%
+- Element packing 81.22 us 100.0% Limitation
+BitwiseOr 23.74 us 29.24%
+lshift 22.63 us 27.86% Our current study is limited to a small set of model sizes and
+- Scalar Convert 521.47 us 100.0% benchmark settings, and the evaluation is mainly focused on
+IndexOps 35.75 us 6.85% long-context text workloads. In particular, we mainly vali-
+DeviceSelectSweep 25.73 us 4.93% date DMA on text-based tasks and do not extend the experi-
+Write Indices 20.42 us 3.91% ments on vision or vision-language settings. In addition, the
+Direct Copy 17.12 us 3.28% mixed-precision tiling policy is not validated on extremely
+Memcpy 13.57 us 2.60% long sequence lengths, diverse hardware settings, or other
+Kernel Fusion (Ours) 116.480 us – model architectures and attention variants. Extensive ex-
+periments and validations are important directions for our
+future work.
+Overall, these results demonstrate that each fusion com-
+ponent contributes to latency reduction, and a fully fused Acknowledgement
+kernel is critical for achieving an efﬁcient mixed-precision
+This work was supported by the National Natural Science
+attention.
+Foundation of China (Nos. 62306025, 92367204), the Fun-
+damental Research Funds for the Central Universities.
+Quantization Granularity. We further investigate the
+impact of different quantization granularities on both la-
+
+3427
+References [14] Yutao Sun, Zhenyu Li, Yike Zhang, Tengyu Pan, Bowen
+Dong, Yuyi Guo, and Jianyong Wang. Efﬁcient attention
+[1] Eduardo Alvarez, Omri Almog, Eric Chung, Simon mechanisms for large language models: A survey, 2026. 1
+Layton, Dusan Stosic, Ronny Krashinsky, and Kyle
+[15] Philippe Tillet, H. T. Kung, and David Cox. Triton: an in-
+Aubrey. Introducing nvfp4 for efﬁcient and accu-
+termediate language and compiler for tiled neural network
+rate low-precision inference. https://developer.
+computations. In Proceedings of the 3rd ACM SIGPLAN In-
+nvidia . com / blog / introducing - nvfp4 - for -
+ternational Workshop on Machine Learning and Program-
+efficient - and - accurate - low - precision -
+ming Languages, page 10–19, New York, NY, USA, 2019.
+inference, 2025. NVIDIA Technical Blog. 1
+Association for Computing Machinery. 6
+[2] Yushi Bai, Xin Lv, Jiajie Zhang, Hongchang Lyu, Jiankai
+[16] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszko-
+Tang, Zhidian Huang, Zhengxiao Du, Xiao Liu, Aohan Zeng,
+reit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia
+Lei Hou, Yuxiao Dong, Jie Tang, and Juanzi Li. Longbench:
+Polosukhin. Attention is all you need. In Advances in Neural
+A bilingual, multitask benchmark for long context under-
+Information Processing Systems (NeurIPS), 2017. 6
+standing, 2024. 6
+[17] Jintao Zhang, Haofeng Huang, Pengle Zhang, Jia Wei, Jun
+[3] Shimao Chen, Zirui Liu, Zhiying Wu, Ce Zheng, Peizhuang
+Zhu, and Jianfei Chen. Sageattention2: Efﬁcient attention
+Cong, Zihan Jiang, Yuhan Wu, Lei Su, and Tong Yang. Int-
+with thorough outlier smoothing and per-thread int4 quanti-
+ﬂashattention: Enabling ﬂash attention for int8 quantization,
+zation, 2025. 3
+2024. 2
+[18] Jintao Zhang, Jia Wei, Haofeng Huang, Pengle Zhang, Jun
+[4] Tri Dao. Flashattention-2: Faster attention with bet-
+Zhu, and Jianfei Chen. Sageattention: Accurate 8-bit atten-
+ter parallelism and work partitioning. arXiv preprint
+tion for plug-and-play inference acceleration, 2025. 2
+arXiv:2307.08691, 2023. 1
+[19] Jintao Zhang, Chendong Xiang, Haofeng Huang, Jia Wei,
+[5] Tri Dao, Daniel Y. Fu, Stefano Ermon, Atri Rudra, and
+Haocheng Xi, Jun Zhu, and Jianfei Chen. Spargeattention:
+Christopher Ré. Flashattention: Fast and memory-efﬁcient
+Accurate and training-free sparse attention accelerating any
+exact attention with io-awareness, 2022. 1, 2
+model inference. arXiv preprint arXiv:2502.18137, 2025. 2
+[6] Tim Dettmers, M. Lewis, Younes Belkada, and Luke Zettle-
+[20] Jintao Zhang, Jia Wei, Pengle Zhang, Xiaoming Xu,
+moyer. Llm.int8(): 8-bit matrix multiplication for transform-
+ers at scale. In arXiv.org, 2022. 1 Haofeng Huang, Haoxu Wang, Kai Jiang, Jianfei Chen, and
+Jun Zhu. Sageattention3: Microscaling fp4 attention for in-
+[7] Elias Frantar and Dan Alistarh. Sparsegpt: Massive language
+ference and an exploration of 8-bit training, 2026. 1
+models can be accurately pruned in one-shot, 2023. 1
+[8] Aaron Grattaﬁori, Abhimanyu Dubey, Abhinav Jauhri, Ab-
+hinav Pandey, Abhishek Kadian, Ahmad Al-Dahle, Aiesha
+Letman, Akhil Mathur, Alan Schelten, Alex Vaughan,
+et al. The llama 3 herd of models. arXiv preprint
+arXiv:2407.21783, 2024. 6
+[9] Hao Kang, Srikant Bharadwaj, James Hensman, Tushar Kr-
+ishna, Victor Ruhle, and Saravan Rajmohan. Turboattention:
+Efﬁcient attention approximation for high throughputs llms,
+2024. 2
+[10] Feyza Duman Keles, Pruthuvi Mahesakya Wijewardena, and
+Chinmay Hegde. On the computational complexity of self-
+attention. In International conference on algorithmic learn-
+ing theory, pages 597–619. PMLR, 2023. 1
+[11] Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng,
+Lianmin Zheng, Cody Hao Yu, Joseph Gonzalez, Hao
+Zhang, and Ion Stoica. Efﬁcient memory management for
+large language model serving with pagedattention. In Pro-
+ceedings of the 29th symposium on operating systems prin-
+ciples, pages 611–626, 2023. 1
+[12] NVIDIA. Nvidia rtx blackwell gpu architecture. https:
+//images.nvidia.com/aem- dam/Solutions/
+geforce/blackwell/nvidia- rtx- blackwell-
+gpu-architecture.pdf, 2025. Version 1.1, NVIDIA
+Technical Whitepaper. 1, 2
+[13] Bita Darvish Rouhani, Ritchie Zhao, Ankit More, Mathew
+Hall, Alireza Khodamoradi, Summer Deng, Dhruv Choud-
+hary, Marius Cornea, Eric Dellinger, Kristof Denolf, et al.
+Microscaling data formats for deep learning. arXiv preprint
+arXiv:2310.10537, 2023. 2
+
+3428

@@ -1,12 +1,16 @@
 # Screening contract review
 
-**Status:** proposed; human approval required before implementation
+**Status:** S1-S10 approved for implementation on 2026-09-13
+
+**Implementation status:** deterministic contracts, validation, lifecycle,
+routing, persistence, tests, and the paper-screener behavior diff approved on
+2026-09-13
 
 **Created:** 2026-09-13
 
-This document proposes the smallest coherent contract for abstract screening.
-It is a review artifact, not an active worker instruction or runtime contract.
-Nothing in this file makes the paper-screener eligible for dispatch.
+This document records the reviewed design for the smallest coherent abstract-
+screening contract. S1-S10 are approved. The deterministic implementation is
+complete, and the contract-alignment behavior diff is approved for dispatch.
 
 ## Why this review is required
 
@@ -304,7 +308,8 @@ canonical artifacts and trace; it does not attempt an in-place migration.
 ## Tools introduced by this slice
 
 No web provider, browser, Tavily integration, or worker tool access is added.
-The only new executable surfaces proposed here are deterministic Python code:
+The new executable surfaces implemented from this review are deterministic
+Python code:
 
 1. candidate-set freezer and hasher;
 2. ordered batch partitioner;
@@ -315,9 +320,9 @@ The only new executable surfaces proposed here are deterministic Python code:
 
 The paper-screener continues to declare `tools: []`.
 
-## Human decisions required
+## Approved decisions
 
-The recommendations below are intentionally not active until approved.
+The user approved S1-S10 as recommended on 2026-09-13.
 
 | ID | Recommended decision | Alternative and consequence |
 |---|---|---|

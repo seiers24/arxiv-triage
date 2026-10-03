@@ -132,6 +132,30 @@ class ArtifactStore:
             outcome=(base / "outcome.json").as_posix(),
         )
 
+    @staticmethod
+    def candidate_set_path(investigation_id: str) -> str:
+        return (
+            PurePosixPath("data/investigations")
+            .joinpath(investigation_id, "discovery", "candidates.json")
+            .as_posix()
+        )
+
+    @staticmethod
+    def screening_record_path(
+        investigation_id: str, objective_profile_hash: str, screening_batch_id: str
+    ) -> str:
+        return (
+            PurePosixPath("data/investigations")
+            .joinpath(
+                investigation_id,
+                "screening",
+                objective_profile_hash,
+                screening_batch_id,
+                "canonical.json",
+            )
+            .as_posix()
+        )
+
     def write_bytes(self, relative_path: str, data: bytes) -> ArtifactRef:
         """Atomically create an immutable artifact.
 

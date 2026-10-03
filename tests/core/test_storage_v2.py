@@ -20,6 +20,7 @@ from arxiv_triage.storage.artifacts import (  # noqa: E402
 )
 from arxiv_triage.storage.reconcile import Reconciler  # noqa: E402
 from arxiv_triage.storage.sqlite import (  # noqa: E402
+    INDEX_SCHEMA_VERSION,
     ProjectionConflictError,
     SQLiteIndex,
     StorageSchemaError,
@@ -47,6 +48,7 @@ def event(run_id: str, event_type: str, sequence: int) -> dict[str, object]:
         "agent_run_id": run_id,
         "investigation_id": "inv-test",
         "paper_id": "paper-1",
+        "screening_batch_id": None,
         "role": "paper_reader",
         "job_type": "paper_read",
         "attempt_no": 1,
@@ -129,6 +131,7 @@ def agent_run_row(run_id: str) -> dict[str, object]:
         "agent_run_id": run_id,
         "investigation_id": "inv-test",
         "paper_id": "paper-1",
+        "screening_batch_id": None,
         "role": "paper_reader",
         "job_type": "paper_read",
         "attempt_no": 1,
@@ -254,6 +257,7 @@ def test_sqlite_and_trace_accept_exact_run_models(tmp_path: Path) -> None:
         agent_run_id="run-invalid",
         investigation_id="inv-test",
         paper_id="paper-1",
+        screening_batch_id=None,
         role="paper_reader",
         job_type="paper_read",
         attempt_no=1,
@@ -294,6 +298,7 @@ def test_sqlite_and_trace_accept_exact_run_models(tmp_path: Path) -> None:
         agent_run_id="run-invalid",
         investigation_id="inv-test",
         paper_id="paper-1",
+        screening_batch_id=None,
         role="paper_reader",
         job_type="paper_read",
         attempt_no=1,
@@ -354,7 +359,7 @@ def test_legacy_overlapping_schema_fails_loudly(tmp_path: Path) -> None:
     path = tmp_path / "legacy.db"
     with sqlite3.connect(path) as connection:
         connection.execute("CREATE TABLE papers (arxiv_id TEXT PRIMARY KEY)")
-    with pytest.raises(StorageSchemaError, match="migration policy is not defined"):
+    with pytest.raises(StorageSchemaError, match="rebuild required"):
         SQLiteIndex(path).initialize()
 
 
@@ -473,6 +478,123 @@ def test_sqlite_schema_matches_minimal_finalized_run_and_critic_contracts(
     orchestrator.update(role="orchestrator", paper_id=None)
     with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
         index.upsert_agent_run(orchestrator)
+    index.close()
+
+
+def test_sqlite_screening_projection_and_index_version_are_explicit(
+    tmp_path: Path,
+) -> None:
+    index = SQLiteIndex(tmp_path / "triage-v2.db")
+    index.initialize()
+    connection = index.connect()
+    assert connection.execute(
+        "SELECT index_schema_version FROM index_metadata WHERE singleton = 1"
+    ).fetchone()[0] == INDEX_SCHEMA_VERSION
+    assert {
+        "candidate_papers",
+        "screening_records",
+        "screening_decisions",
+    }.issubset(
+        {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    )
+
+    rows = base_rows()
+    rows["investigations"][0]["status"] = "screening"
+    rows["candidate_papers"] = [
+        {
+            "investigation_id": "inv-test",
+            "paper_id": "paper-1",
+            "candidate_index": 0,
+            "candidate_hash": HASH,
+            "abstract": None,
+            "discovery_refs_json": ["discovery-1"],
+        }
+    ]
+    screening_run = agent_run_row("run-screening-1")
+    screening_run.update(
+        paper_id=None,
+        screening_batch_id="screening-batch-0001",
+        role="paper_screener",
+        job_type="paper_screen",
+    )
+    rows["agent_runs"] = [screening_run]
+    rows["screening_records"] = [
+        {
+            "investigation_id": "inv-test",
+            "screening_batch_id": "screening-batch-0001",
+            "agent_run_id": "run-screening-1",
+            "candidate_set_hash": HASH,
+            "objective_profile_hash": HASH,
+            "screening_scope_hash": HASH,
+            "input_hash": HASH,
+            "artifact_path": "data/investigations/inv-test/screening/batch/canonical.json",
+            "artifact_hash": HASH,
+        }
+    ]
+    rows["screening_decisions"] = [
+        {
+            "investigation_id": "inv-test",
+            "screening_batch_id": "screening-batch-0001",
+            "paper_id": "paper-1",
+            "candidate_hash": HASH,
+            "state": "needs_review",
+            "reason": "Title-only candidate remains visible",
+            "evidence_spans_json": [],
+        }
+    ]
+    index.ingest_rows(rows)
+    assert connection.execute("SELECT state FROM screening_decisions").fetchone()[0] == (
+        "needs_review"
+    )
+    index.close()
+
+
+def test_sqlite_rejects_a_different_explicit_index_version(tmp_path: Path) -> None:
+    path = tmp_path / "old-index.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE index_metadata (singleton INTEGER PRIMARY KEY, "
+            "index_schema_version INTEGER NOT NULL)"
+        )
+        connection.execute("INSERT INTO index_metadata VALUES (1, ?)", (INDEX_SCHEMA_VERSION - 1,))
+    with pytest.raises(StorageSchemaError, match="schema version.*rebuild required"):
+        SQLiteIndex(path).initialize()
+
+
+def test_sqlite_screening_attempt_identity_is_batch_scoped(tmp_path: Path) -> None:
+    index = SQLiteIndex(tmp_path / "triage-v2.db")
+    index.initialize()
+    index.ingest_rows(base_rows())
+
+    first = agent_run_row("run-screening-1")
+    first.update(
+        paper_id=None,
+        screening_batch_id="screening-batch-0001",
+        role="paper_screener",
+        job_type="paper_screen",
+    )
+    second = dict(
+        first,
+        agent_run_id="run-screening-2",
+        screening_batch_id="screening-batch-0002",
+        input_path="data/investigations/inv-test/runs/run-screening-2/input.json",
+    )
+    index.upsert_agent_run(first)
+    index.upsert_agent_run(second)
+    assert len(index.agent_run_rows()) == 2
+
+    duplicate = dict(
+        first,
+        agent_run_id="run-screening-duplicate",
+        input_path="data/investigations/inv-test/runs/run-screening-duplicate/input.json",
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        index.upsert_agent_run(duplicate)
     index.close()
 
 

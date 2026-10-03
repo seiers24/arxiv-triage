@@ -1,0 +1,743 @@
+This CVPR Workshop paper is the Open Access version, provided by the Computer Vision
+Foundation. Except for this watermark, it is identical to the accepted version;
+the final published version of the proceedings is available on IEEE Xplore.
+
+DirectFlow: One-Step Posterior Transport Distillation for
+Blind Face Restoration
+
+Eashan Adhikarla Brian D. Davison
+Lehigh University Lehigh University
+Bethlehem, Pennsylvania, USA Bethlehem, Pennsylvania, USA
+eaa418@lehigh.edu bdd3@lehigh.edu
+
+Abstract Panel A: (Standard Diffusion + LCM) Panel B: (Rectified Flow + Consistency Model)
+Gaussian noise (𝒙𝑻)
+Degraded region Blurry region HQ Posterior Region
+
+Blind face restoration inherently struggles with the Degraded image
+(𝒚) as noise (𝒙𝑻)
+
+Perceptual Quality Perceptual Quality
+perception-distortion trade-off. Regression-based methods Theoritical Implicit estimation B
+Teacher’s rectified
+flow; B → C
+Multi-step one-step A→B HQ Posterior
+minimize distortion but inevitably produce over-smoothed, curved trajectory jump fails.
+MMSE Estimate
+(𝒙𝑴𝑴𝑺𝑬) C (𝒙𝑯𝑸)
+blurry textures, while generative models synthesize sharp
+A
+details but suffer from prohibitive computational latency or LQ Image Realistic image
+manifold (𝒙𝟎)
+(𝒙𝑳𝑸) Optimal transport vector sum:
+structural identity shifts. Recent flow-matching paradigms Realistic image manifold (𝒙𝟎) νtstudent ≈ νtestimation + νtrefinement
+elegantly reconcile this conflict by explicitly transporting (a) Semantic Content/Identity (b) Semantic Content/Identity
+the distortion-optimal posterior mean to the natural image 12
+
+manifold; however, they still rely on computationally expen- Figure 1. Trajectory analysis of restoration frameworks. (a) Itera-
+sive ODE solvers. In this work, we propose DirectFlow to tive diffusion paths are highly curved, causing naive one-step con-
+sistency jumps to fail. (b) DirectFlow constructs a direct mapping
+achieve this balance in a single forward pass. Rather than
+to the transported posterior mean, attempting to achieve optimal
+naively matching ground-truth images, DirectFlow distills
+perceptual quality in a single step.
+the transported posterior mean of a Rectified Flow teacher
+directly into a latent consistency model. We repurpose the
+distortion trade-off [2, 3, 31]. As formally demonstrated
+teacher’s velocity field as a distributional critic, pulling
+by [3], this trade-off establishes that minimizing pixel-level
+single-step predictions towards true data manifold peaks
+distortion (MSE/PSNR/SSIM [47]) inevitably degrades per-
+without solver integration error. Furthermore, to dynami-
+ceptual quality (FID [11]/LPIPS [60]), and vice versa. The
+cally adapt to diverse degradations, we introduce a semantic
+field has historically navigated this trade-off through two
+adapter paired with Low-Rank Adaptation (LoRA) in the
+extreme paradigms:
+UNet’s cross-attention layers. By a two-stage optimization
+schedule that first aligns conditioning modules and then Regression models (MMSE estimators). Methods min-
+freezes spatial pathways during LoRA refinement, this strat- imizing L1 /L2 losses learn the conditional expectation
+egy enables continuous, degradation-aware conditioning X̂ ∗ = E[X|Y ], representing the posterior mean. While
+without compromising the foundational generative prior. Ex- uniquely minimizing expected distortion, this approach aver-
+tensive experiments demonstrate that one-step DirectFlow ages over all plausible high-quality images. This averaging
+matches the perceptual quality of a 25-step flow-matching suppresses high-frequency detail and produces smooth, over-
+teacher while accelerating inference by 7.5×, establishing regularized textures. Architectures such as SwinIR [21]
+a highly efficient state-of-the-art architecture for real-time, epitomize this regime by achieving excellent PSNR at the
+high-fidelity blind face restoration. direct cost of poor perceptual realism.
+Iterative generative models. Diffusion-based restorers [23,
+44, 50] instead sample individual instances x ∼ p(x|y) from
+1. Introduction the posterior distribution. Each sample is sharp and photore-
+alistic. However, stochastic variation elevates distortion, and
+The restoration of high-quality face images from degraded the iterative denoising process requires 20 to 50 neural func-
+observations (encompassing blur, noise, compression ar- tion evaluations (NFEs), precluding real-time deployment.
+tifacts, and downsampling) is an ill-posed inverse prob- Moreover, because these methods typically initiate sampling
+lem whose solution space is governed by the perception- from noise, they introduce output uncertainty that is undesir-
+
+3389
+able for deterministic restoration, and the randomness can Consistency Model [17, 28] student to predict the frozen
+manifest as identity or structure drift even when perceptual teacher’s multi-step output in one forward pass.
+sharpness is high. To realize this, our framework introduces three key inno-
+vations, which form our primary contributions:
+1.1. The Transported Posterior Mean
+1. We formalize cross-space knowledge transfer between
+Recent advances in optimal-transport-based image restora- pixel-space teachers and latent-space students. By pro-
+tion [34] identify a theoretically appealing middle ground. jecting the teacher’s endpoint X † = T (X̂ ∗ (Y )) into the
+Rather than sampling from the posterior p(x|y), these student’s latent space using a shared frozen VAE encoder,
+methods construct a deterministic mapping from the pos- we achieve highly efficient distillation with minimal in-
+terior mean to the natural-image manifold via a Rectified formation loss.
+Flow [24, 25]. Concretely, a velocity field vϕ (xt , t) de- 2. To adapt dynamically to diverse corruptions, we introduce
+fines an ordinary differential equation (ODE) whose solution a synergistic fine-tuning strategy combining a semantic
+transports the MMSE estimate X̂ ∗ onto the data manifold: adapter with Low-Rank Adaptation (LoRA) of the base
+dx
+ UNet. By injecting stage-aligned spatial encoder and
+= vϕ (xt , t), x(0) = X̂ ∗  degradation tokens into LoRA-augmented UNet, we em-
+dt (1)
+power the network to actively attend to degradation hints.
+x(1) = X̂0 ∈ supp(pdata )
+
+3. We repurpose the frozen teacher’s velocity field as a
+As illustrated in Fig. 1(a), standard diffusion requires fol- distributional critic. By querying the teacher’s flow at
+lowing a curved trajectory where naive one-step consistency the student’s output, SGCL pushes predictions toward
+jumps fail to reach the high-quality manifold. By contrast, probability-density peaks, overcoming the information
+optimal transport straightens this path. The resulting end- bottleneck inherent to latent-space distillation.
+point X̂0 (the transported posterior mean) achieves the min- Extensive experiments demonstrate that DirectFlow achieves
+imum MSE among all estimators constrained to lie on the perceptual quality competitive with a 25-step flow-matching
+natural-image manifold [34]. Although this transported state teacher at 7.5× faster inference, creating a highly efficient
+represents an optimal perceptual estimator [3, 34], obtain- state-of-the-art method for real-time blind face restoration.
+ing it requires integrating the ODE across multiple steps.
+This iterative dependency introduces a prohibitive inference 2. Related Work
+latency that renders real-time execution infeasible. Stan-
+dard one-step distillation seems like the straight-forward 2.1. Blind Face Restoration
+path, but in practice it is brittle: reduced-capacity students
+GAN-based approaches. Early methods relied on geo-
+and teacher–student trajectory mismatch often prevent naive
+metric priors like facial landmarks or parsing maps [7, 55].
+distillation from matching the multi-step teacher, and the
+GFPGAN [45] exploits pre-trained generative facial priors
+distillation targets themselves typically require running the
+to hallucinate realistic textures, while CodeFormer [62] and
+teacher solver for many steps, creating a hidden training-
+VQFR [8] replace the GAN prior with discrete codebook
+time and storage burden. Further, latent-space distillation
+lookup transformers for improved robustness. Both achieve
+compounds the issue by injecting an information bottleneck
+single-pass inference but struggle with severe degradations
+through the VAE, which can blunt fine textures and seman-
+and can introduce identity shifts due to the limited expres-
+tic fidelity. To overcome this prohibitive latency, we frame
+siveness of their generative priors [53].
+blind restoration through the lens of latent consistency mod-
+els [28, 42], which natively map any arbitrarily degraded Diffusion-based approaches. DiffBIR [23] and DR2 [50]
+state along a transport trajectory directly to its optimal high- leverage pre-trained Stable Diffusion [39] as a generative
+quality origin in a single step. prior, conditioning the denoising process on the degraded
+input. StableSR [44] further introduces time-aware feature
+1.2. Our Approach and Contributions modulation for controllable super-resolution, following prin-
+We propose DirectFlow, the first framework to distill the ciples of iterative refinement established in SRDiff [16].
+transported posterior mean trajectory into a single-step stu- These methods achieve state-of-the-art perceptual quality
+dent network. As depicted in Fig. 1(b), DirectFlow circum- but require 20–50 NFEs per image, rendering them impracti-
+vents integration latency by modeling restoration as a com- cal for real-time applications.
+piled optimal transport map. The student directly learns the Flow-based optimal estimation. PMRF [34] introduces
+hypotenuse vector connecting the degraded input to the trans- the posterior-mean rectified-flow paradigm: first compute
+ported posterior mean, bypassing the intermediate MMSE the MMSE estimate via a regression network, then transport
+state entirely. Rather than targeting ground-truth images it onto the natural-image manifold via a learned Rectified
+or sampling from the posterior, DirectFlow trains a Latent Flow [24, 25]. The result is provably the closest point on the
+
+3390
+Standard Consistency
+Regression Iterative Distillation Model **DirectFlow
+Input (LQ) (SwinIR, 1 Step) (PMRF, 25 NFE) (InterLCM, 4 NFE) (InterLCM, 1 NFE) (Ours, 1 NFE) Ground-truth
+
+Inference Efficiency (512x512, A6000)
+1.2 Row 1:
+NFE
+Latency (s) Heavy blur
+
+1.0
+50 50 7s Throughput 7.19
+(img/s)
+
+Normalized value (per metric)
+40
+0.8
+Row 2:
+
+0.6 Heavy noise
+25 3.46
+
+0.4 2.5s
+
+Row 3:
+1.77s
+1.45s
+0.2
+JPEG artifacts
+0.56 0.69
+0.4
+0.14 1 0.139s 1 0.289s
+0.0
+DifFace BFRffusion DiffBIR PMRF CodeFormer DirectFlow
+
+Figure 2. (Left) Inference step comparison, highlighting the computational bottleneck of iterative generative models. (Right) Qualitative
+results across diverse degradations. Regression models yield over-smoothed outputs, while flow-matching models (PMRF) recover
+22
+photorealistic details but require 25 iterative steps. Standard distillation (InterLCM) achieves one-step inference but suffers from latent VAE
+bottlenecks. DirectFlow achieves the perceptual sharpness of the 25-step teacher in a single forward pass.
+
+data manifold to the posterior mean in the optimal-transport ing model versions.
+sense [43]. However, it still requires 25 iterative ODE steps. Gated and grounded injection. GLIGEN [19] introduces
+gated self-attention layers with initialized gates for open-set
+2.2. Distillation for Diffusion Models
+grounded generation, allowing spatial grounding of text-to-
+Progressive distillation [40] halves the number of sampling image synthesis. Uni-ControlNet [61] and UniControl [37]
+steps by training a student to match pairs of consecutive unify multiple control signals through shared adapters and
+teacher steps. Consistency Models [42] enforce a self- task-routing mechanisms.
+consistency property: any point on the ODE trajectory maps Token-level conditioning. IP-Adapter [54] injects image
+to the same origin, enabling single-step generation. Latent features through decoupled cross-attention with learned
+Consistency Models (LCM) [27] and ADD [41] extend this projection layers, maintaining text compatibility while
+idea to the latent space of Stable Diffusion, achieving 1–4 adding image-based control. Ctrl-Adapter [22] and Pho-
+step text-to-image generation. InterLCM [17] adapts the toMaker [20] provide flexible frameworks for adapting ex-
+LCM framework specifically for controllable face restora- isting ControlNet-trained modules or identity-preserved to-
+tion with dedicated visual and spatial encoders. Our work kens to new diffusion backbones. Our semantic adapter
+draws inspiration from these consistency-based distillation (described in Section 3.3.1) inherits the zero-initialization
+ideas but targets a fundamentally different objective: we stability principle of ControlNet [59] but operates on token-
+distill the transported posterior mean rather than an uncondi- level conditioning rather than spatial feature maps, achieving
+tional generation trajectory, and we introduce a cross-space a fundamentally more parameter-efficient design (∼>300M
+bridge to handle the mismatch between teacher and student parameters). Unlike IP-Adapter, which targets text-image
+representation domains. alignment via CLIP features [38], our adapter leverages DI-
+NOv2’s [35] self-supervised features specifically for their
+2.3. Adapter Injection for Frozen Diffusion Models
+sensitivity to degradation patterns.
+Injecting new conditioning signals into frozen diffusion UN-
+ets is a well-studied problem, with approaches varying along 2.4. Self-Supervised Visual Features for Restoration
+two axes: what is injected (spatial maps, tokens, style vec- Self-supervised learning (SSL) provides robust pre-trained
+tors) and how it is injected (cross-attention, residual addition, priors for vision tasks. Early generative SSL, such as
+gated fusion) [12, 33]. MAE [10] and SimMIM [51], focuses on structural recon-
+Spatial conditioning. ControlNet [59] copies the en- struction but often overlooks fine-grained textures. Simi-
+coder half of the UNet and connects outputs through zero- larly, contrastive and semantic frameworks like SimCLR [5],
+initialized 1×1 convolutions, ensuring the model starts from MoCo [9], and CLIP [38] provide high-level guidance but
+its pre-trained state. While highly effective, this doubles the tend to discard low-level degradation patterns due to their
+model size (>300M parameters). T2I-Adapter [33] employs focus on semantic invariance [29].
+lightweight feature-matching networks that inject multi-scale In contrast, dense self-distillation methods like DINO [4]
+spatial features into the UNet’s encoder blocks, achieving and DINOv2 [35] preserve both semantics and local spatial
+similar controllability at lower cost. Similar lightweight nuances. These features have proven effective for zero-shot
+strategies have been explored in X-Adapter [57] for upgrad- degradation assessment and quality analysis [15, 58]. To
+
+3391
+exploit this, DirectFlow introduces a parameter-efficient fine- This endpoint is provably the closest point on M to the
+tuning strategy. We combine a semantic adapter with low- posterior mean in the optimal transport sense [34, 43].
+rank adaptation (LoRA) integrated directly into the UNet’s
+cross-attention and feed-forward blocks. While the pre-
+3.2. Transported Posterior Distillation
+trained ControlNet-derived spatial pathways are optimized Let T : Y → X denote a teacher model that implements
+in Stage A and frozen in Stage B, to provide rigid, memory- Eq. (4) over N steps. The teacher’s output X † = T (Y )
+efficient spatial guidance, the LoRA matrices grant the UNet serves as our explicit distillation target. Rather than train-
+the flexibility to learn a new attention distribution specifi- ing a student Sθ to regress to the ground truth X (which
+cally for the degradation hints. This configuration actively yields the blurry posterior mean) or to match individual pos-
+guides the single-step transport and gracefully averts the terior samples (which introduces stochastic distortion), we
+catastrophic forgetting typical of full-network fine-tuning. optimize:
+Sθ (Y ) ≈ T (Y ) = X † . (5)
+3. Method This strategy is deliberate. The teacher’s output is the op-
+We present DirectFlow, a framework designed to distill timal perceptual estimator. Distilling X † ensures the stu-
+the transported posterior mean of a multi-step rectified dent inherits this mathematically favorable position on the
+flow teacher into a single-step latent consistency student. perception-distortion curve. By adopting the self-consistency
+Fig. 3 provides a system overview. Our framework operates formulation [42], the student learns to treat varying degra-
+through three core mechanisms: (1) a frozen flow-matching dations simply as intermediate points along the trajectory,
+teacher providing pre-computed restoration targets, (2) a dual directly projecting them to their optimal high-quality origin.
+parameter-efficient student featuring a Semantic Adapter and Moreover, as the teacher produces pixel-space RGB out-
+a LoRA-modulated UNet, and (3) a multi-objective training puts while the student operates in a compressed diffusion
+framework operating across latent and pixel dimensions. Our latent space [39], we construct a latent space bridge. A
+goal is to not copy teacher’s output, but directly learn to pre- shared frozen VAE encoder E projects both the teacher’s
+dict the mathematically optimal endpoint of the perception- output and the student’s input into a common representa-
+distortion trade-off in a single step. We optimize DirectFlow tional domain, isolating semantic structural learning from
+with a two-stage curriculum: Stage A aligns conditioning low-level pixel reconstruction.
+modules (visual/spatial encoders + semantic adapter), and 3.3. Degradation-Aware Conditioning
+Stage B refines transport via UNet LoRA with visual/spatial
+encoders frozen. The input degradation space Y is a heterogeneous mixture
+of disparate manifolds, including blur, noise, and compres-
+3.1. Preliminaries: Transported Posterior Mean sion artifacts. A standard single-step model simply learns
+Given a degraded observation Y and a clean image X, the the average transport across these manifolds, which is ge-
+Minimum Mean Square Error (MMSE) estimator is defined: ometrically suboptimal. We resolve this through a novel
+dual-adaptation strategy.
+X̂ ∗ = E[X | Y ] = arg min E ∥X̂ − X∥2 | Y . (2)
+ 
+X̂
+3.3.1. The Semantic Adapter
+To explicitly condition the transport on the local geometry of
+This estimator minimizes distortion but, according to the
+the degradation, we introduce a parameter-efficient Semantic
+perception-distortion trade-off [3, 34], necessarily deviates
+Adapter. (1) Feature extraction. The low-quality input Y
+from the natural image manifold M, producing smooth,
+is processed by a frozen self-supervised vision transformer
+over-regularized outputs.
+(DINOv2 [35]) to extract a global degradation-aware token
+A Rectified Flow [24, 25] establishes a deterministic
+edino ∈ R768 . (2) Zero-initialized projection. A trainable
+transport from a source distribution to a target distribution
+linear layer Z safely projects this token using zero-initialized
+via a learned velocity field. For image restoration, we utilize
+weights W (0) = 0 and b(0) = 0. This ControlNet-style
+flows that transport the MMSE estimate directly to the data
+gating guarantees the student begins training identically to
+manifold:
+its pre-trained state. (3) Additive injection. The projected
+xt = (1 − t) xsource + t xtarget , vt = xtarget − xsource , (3) embedding is additively merged with the semantic content
+token from the frozen semantic context projector (a CLIP-
+where xsource = X̂ ∗ and xtarget ∼ pdata (· | Y ). Integrating based global contextualizer [17, 38]), forming the final cross-
+the neural velocity field vϕ (xt , t, Y ) from t=0 to t=1 yields attention conditioning vector c.
+the transported posterior mean: 3.3.2. Transport-Adaptive LoRA
+Z 1
+A critical limitation of injecting novel semantic tokens into
+X̂0 = X̂ ∗ + vϕ (xt , t, Y ) dt. (4) a frozen diffusion UNet is the network’s inability to actively
+0
+
+3392
+Transported
+Posterior Mean
+
+OFFLINE PRECOMPUTATION ONLINE STUDENT TRAINING
+Identity & Degradation Branch
+Rectified Flow
+CLIP Visual
+Teacher ViT-B/16 Encoder
+Identity Token Zero-conv/
+tanh Gate
+Student (Generator) Process Teacher (Velocity) Guidance
+Semantic
+Ilq N-step ODE/NFE †
+𝐼ℎ𝑞 Adapter
+DINOv2 cross-attention Frozen Predicted
+Degraded RGB Transported Degradation Token Student
+Patch Features Degraded Predicted Teacher Velocity
+Posterior Mean Model
+Input 𝒚 Clean Image ෝ𝒙𝟎 𝜈𝜑(𝒙𝒕, 𝒕) 𝝂𝝋
+Predicted 𝑓𝜃(𝒚)
+(zpred)
+
+LoRA Matrices LoRA Matrices LoRA Matrices LoRA Matrices
+VAE Encoder Frozen ℒlatent
+Add Noise (t)
+Frozen Speace Bridge LCM UNet Consistency Step:
+zlq → Perturbed 𝑥෤ 0 = 𝑥𝑡 − 𝑡 ∗ 𝝂𝝋
+LQ Latent SGCL State 𝒙𝒕
+VAE Loss
+Cached Supervision Predicted Image Decoder
+Velocity field
+Input Latent zlq Target Latent z† xpred
+Teacher (𝜈∅)
+Spatial Encoder Critic Consistency Loss
+Noise (t)
+𝒙𝟎 − 𝒔𝒈(𝑥෤ 0)||22
+ℒ𝑆𝐺𝐶𝐿 = ||ෝ
+
+Figure 3. System overview of DirectFlow. (Offline: Teacher) During offline pre-computation,
+29
+the rectified flow teacher processes each 26
+
+degraded input over N steps to produce the transported posterior mean; both input and output are projected into latent space via a frozen
+VAE encoder (the space bridge). (Online: Student) During training, the student receives the cached LQ latent and produces a one-step
+prediction. A semantic adapter extracts degradation-aware features from the LQ RGB image and injects them into the UNet’s cross-attention
+via zero-convolution gating. In Score-Guided Consistency Loss (SGCL), the student output is perturbed, the teacher’s velocity is queried,
+and a detached clean estimate forms the SGCL target; gradients flow back through the VAE decoder into the student latent.
+
+attend to the new signal. Because the base UNet attention The primary anchor loss Llat minimizes the mean squared
+mechanisms were strictly optimized for text embeddings error directly between the student’s predicted latent and
+(standard structural guidance), they inherently ignore the the space-bridged teacher latent. To balance the distortion-
+out-of-domain degradation vectors provided by the semantic perception tradeoff, Llpips [60] and Ll1 are computed by de-
+adapter. To compel the network to utilize these degradation coding the predicted latents through the VAE decoder while
+hints without triggering catastrophic forgetting of its foun- maintaining active gradient flow.
+dational generative prior, we introduce Transport-Adaptive
+Low-Rank Adaptation. We apply these matrices exclusively 3.4.1. Score-Guided Consistency Loss (SGCL)
+to the cross-attention and feed-forward blocks of the UNet Inspired by Score Distillation Sampling [36], SGCL (Fig. 3)
+while completely freezing the heavy morphological condi- leverages the frozen teacher as a pixel-space distributional
+tioning prior. The morphological prior enforces rigid geomet- critic. By maintaining active gradient flow through the VAE
+ric face constraints, whereas the lightweight LoRA matrices decoder, SGCL pulls the predicted latent out of the VAE’s
+grant the UNet the necessary degrees of freedom to learn a blurry reconstruction bottleneck, driving the student to dis-
+new attention distribution. This learned distribution is specif- cover high-frequency “super-latents.”1
+ically tailored to map the 1-step optimal transport jump while Formulation. Under our Rectified Flow convention, t = 0
+concurrently internalizing the semantic degradation hints. represents the source (noise/MMSE) and t = 1 the natural
+A similar work LCM-LoRA [27] elegantly distills a pre- image target. We perturb the student’s decoded RGB output
+trained base model into a few-step generator by training x̂ by injecting Gaussian noise ϵ ∼ N (0, I) at a randomly
+an independent acceleration module. However, it operates sampled timestep t:
+strictly within the original model’s native conditioning space,
+functioning purely as a temporal compression plugin. In con- xt = tx̂ + (1 − t)ϵ. (7)
+trast, our Transport-Adaptive LoRA serves a dual architec-
+tural imperative. It compresses the 25-step optimal transport Perturbation Band. To guarantee strong directional gradi-
+trajectory and acts as a fundamental representational bridge. ents toward the data manifold rather than minor pixel cor-
+It structurally repurposes the cross-attention layers to process rections, we use conservative stage-specific bands: (t ∈
+entirely out-of-domain features from the semantic adapter, [0.05, 0.25]) in Stage A and (t ∈ [0.05, 0.20]) in Stage B.
+optimizing specifically for the transported posterior mean Optimization. We query the frozen teacher’s velocity field
+rather than a standard generation trajectory. vϕ (xt , t, Y ) to form a clean-image estimate. To prevent
+explosive gradients from destabilizing the LoRA matrices in
+3.4. Training Objectives high-noise regimes, we clamp this target:
+We employ a composite loss operating across both latent and 
+x̂clean = Clamp xt + (1 − t)vϕ , 0, 1 . (8)
+pixel dimensions:
+1 codes decoding to perceptual details sharper than the VAE encoding
+
+Ltotal = λlat Llat + λlpips Llpips + λl1 Ll1 + λsgcl Lsgcl . (6) limit
+
+3393
+Table 1. Quantitative comparison on synthetic and real-world datasets. Best results are bolded; second-best are shaded gray. DirectFlow
+achieves state-of-the-art perceptual quality (LPIPS, PSNR) among single-step methods, highly competitive with 25-step generative models,
+while maintaining exceptional inference efficiency of under 300 ms per I 512×512 .
+
+Synthetic Real-world
+Time
+Method Celeba-Test LFW-Test WebPhoto-Test WIDER-Test (sec)
+LPIPS ↓ FID ↓ MUSIQ ↑ IDS ↑/↓ PSNR ↑ SSIM ↑ FID ↓ MUSIQ ↑ FID ↓ MUSIQ ↑ FID ↓ MUSIQ ↑
+Input 0.574 145.22 72.81 0.32/47.94 22.72 0.706 138.87 26.87 171.63 18.63 201.31 14.22 –
+PULSE† [30] 0.356 68.33 66.46 0.50/41.08 22.10 0.592 67.01 65.00 85.69 63.88 70.65 63.01 3.509
+DFDNet† [18] 0.332 54.21 72.08 0.52/40.32 24.27 0.628 60.28 73.06 92.71 68.50 59.56 62.02 0.438
+GFPGAN† [45] 0.230 49.84 73.90 0.56/38.79 24.64 0.688 50.36 73.57 87.47 72.08 39.45 72.79 0.312
+RestoreFormer† [48] 0.241 50.04 73.85 0.63/36.16 24.61 0.660 48.77 73.70 78.85 69.83 50.04 67.83 0.066
+VQFR† [8] 0.245 41.84 75.18 0.64/35.74 24.06 0.660 51.33 71.74 75.77 72.02 44.09 74.01 0.177
+CodeFormer† [62] 0.227 52.94 75.55 0.60/37.27 25.19 0.685 52.84 75.48 83.95 74.00 39.22 73.41 0.085
+DR2⋆ [50] 0.264 54.48 67.99 0.42/44.00 25.03 0.617 45.71 71.50 109.24 62.37 48.20 60.28 1.775
+DifFace⋆ [56] 0.272 39.23 68.87 0.48/41.84 24.80 0.684 46.31 69.76 80.86 65.37 37.74 65.02 3.248
+PGDiff⋆ [52] 0.300 47.26 71.81 –/55.90 22.72 0.659 44.65 71.74 101.68 67.92 38.38 68.26 14.768
+WaveFace⋆ [32] 0.362 57.58 – 0.67/34.50 23.56 0.691 53.88 73.54 78.01 70.45 37.23 72.89 19.370
+InterLCM⋆ [17] 0.223 45.38 76.58 0.65/33.64 25.15 0.718 51.32 76.16 75.48 75.88 35.43 76.29 0.421
+DirectFlow (Ours)⋆ 0.221 40.96 76.12 0.66/33.40 25.24 0.714 45.08 75.92 75.92 75.42 36.91 75.11 0.289
+†
+denotes regression-based models and ⋆ denotes generative models.
+
+Table 2. Quantitative evaluation on the CelebA-Test benchmark. sequence of Gaussian blur, Gaussian noise, JPEG compres-
+Extended evaluation across perceptual and distortion metrics. Di- sion, and randomized downsampling-upsampling operations,
+rectFlow establishes a strictly optimal balance on the perception- parameterized consistently with Real-ESRGAN [46]. For
+distortion curve for single-step architectures.
+evaluation, we utilize the synthetic CelebA-Test [26] bench-
+Perceptual Quality Distortion
+mark (3,000 images) to measure exact structural fidelity,
+Method
+FID ↓ KID ↓ NIQE ↓ Precision ↑ PSNR ↑ SSIM ↑ LPIPS ↓ Deg ↓ LMD ↓ alongside widely adopted real-world datasets including LFW-
+DOT [1] 100.2 0.0914 6.462 0.1600 21.32 0.6636 0.4756 43.87 2.876 Test [13], WIDER-Test [62] and WebPhoto-Test [45] to as-
+RestoreFormer++ [49] 41.15 0.0290 4.187 0.6877 25.31 0.6703 0.3441 29.63 2.043
+RestoreFormer [48] 42.30 0.0301 4.405 0.7010 24.62 0.6460 0.3655 32.13 2.299 sess out-of-domain generalization.
+CodeFormer [62] 53.16 0.0425 4.649 0.6940 25.15 0.6700 0.3432 37.28 2.470
+VQFR [8] 41.79 0.0297 3.693 0.6593 24.07 0.6446 0.3515 35.75 2.429 Evaluation Metrics. Given the inherently ill-posed nature
+GFPGAN [45] 46.72 0.0350 4.415 0.6970 24.99 0.6774 0.3643 36.05 2.443
+of BFR, evaluation requires a holistic assessment of both
+DiffBIR [23] 59.06 0.0509 6.084 0.5643 25.39 0.6536 0.3878 32.94 2.006
+BFRffusion [6] 41.53 0.0301 4.966 0.6623 26.21 0.6917 0.3619 30.98 1.992 the perception and distortion axes [3]. For distortion and
+PMRF [34] 37.46 0.0257 4.118 0.7073 26.37 0.7073 0.3470 30.67 2.030
+structural alignment, we report PSNR, SSIM, and MSE. To
+DirectFlow (Ours) 37.98 0.0259 3.982 0.7196 26.26 0.6988 0.3450 30.21 1.998
+quantify perceptual fidelity and naturalness, we report the
+FID [11] and LPIPS [60]. Furthermore, to evaluate sub-
+The SGCL objective is computed as a Mean Squared Error: jective visual quality on in-the-wild images lacking ground
+truth, we incorporate the no-reference metric MUSIQ [15].
+2
+Lsgcl = x̂ − sg(x̂clean ) 2 , (9) Implementation Details. Our frozen teacher is the pre-
+trained PMRF [34] architecture. The student network inher-
+where sg(·) denotes a stop-gradient. Because x̂clean is de-
+its the base weights of SD v1.5 [39]. The semantic adapter
+tached, gradients flow strictly from the pixel-space error back
+utilizes a frozen DINOv2-ViT-B/14 [35] backbone, and the
+into the student’s latent representation. Non-zero velocity
+transport-adaptive LoRA [12] matrices are initialized with
+provides a highly accurate directional gradient that pulls the
+a rank of r = 32. The morphological conditioning prior is
+one-step prediction out of blurry local minima.
+initialized from pre-trained ControlNet [59]. We train Direct-
+4. Experiments Flow with a two-stage curriculum on 70k latent-cached sam-
+ples using AdamW and cosine learning-rate decay with bf16
+Datasets. Following standard protocols in blind face restora- mixed precision and EMA (0.999). In Stage A, we optimize
+tion, we train our DirectFlow student network exclusively on the visual encoder, spatial encoder, and semantic adapter pro-
+the FFHQ dataset [14], which contains 70,000 high-quality jection/gate, while keeping the UNet frozen (learning rate
+face images resized to 512 × 512. To synthesize low-quality 2 × 10−5 , weight decay 5 × 10−5 ). In Stage B, we initial-
+(LQ) inputs during the offline teacher caching phase, we em- ize from Stage A checkpoints, freeze visual/spatial encoders,
+ploy a comprehensive degradation pipeline mimicking real- and optimize UNet-LoRA together with the semantic adapter
+world complex corruptions. This pipeline applies a random projection/gate. SGCL is applied sparsely during training
+
+3394
+LQ DAEFR RestoreFormer VQFR DifFace PGDiff DiffBIR OSEDiff CodeFormer OSDFace InterLCM PMRF Ours HQ
+
+Figure 4. Qualitative comparison of DirectFlow against state-of-the-art blind face restoration methods on CelebA-Test dataset.
+
+with a conservative perturbation band t ∈ [0.05, 0.25], yield- Table 3. Ablation study on CelebA-Test. Each row removes one
+ing stable optimization under one-step inference. Unless oth- component from the full model.
+erwise specified, all reported results use this Stage A→Stage Configuration PSNR↑ LPIPS↓ FID↓ Note
+B schedule. DirectFlow (Full) 25.24 0.221 40.96 Complete model
+w/o DINOv2 Adapter 24.98 0.232 44.18 No deg. awareness
+Quantitative Results. The quantitative evaluation on the w/o SGCL 25.07 0.228 42.63 No manifold guidance
+CelebA-Test benchmark is presented in Tab. 1. DirectFlow w/o Zero-conv (scalar gate) 22.85 0.560 136.70 Stalled training
+w/o Pixel losses 25.14 0.238 46.92 Latent-only
+establishes a strictly optimal balance on the perception- w/o color correction 25.18 0.226 42.11 Color drift
+distortion curve for single-step architectures. While multi- Ablation
+step models like PMRF natively achieve high perceptual Teacher Student + Semantic + Degradation DirectFlow
+LQ (1-step) (Base) Adapter Adapter (full, 1-step) HQ
+fidelity (low FID) at the cost of 25 Neural Function Evalua-
+tions (NFEs), DirectFlow achieves highly competitive FID
+and LPIPS scores in a single step, drastically outperforming
+previous 1-step distillation methods like InterLCM. Further-
+more, Tab. 1 details performance on real-world datasets.
+DirectFlow achieves comparatively close to state-of-the-art
+perceptual quality, reflected by FID & MUSIQ scores, while
+maintaining exceptional inference efficiency with single-step Figure 5. Qualitative ablation on blind face restoration (CelebA-
+execution (as illustrated in Fig. 2). Test). Left to right: LQ, Teacher [34] (1-step), Base, +Sem, +Deg, 27
+
+Full (SGCL), HQ.
+Qualitative Results. Fig. 4 illustrates the qualitative supe-
+riority of DirectFlow when presented with severe, in-the- unstructured degradations. As highlighted in the extreme
+wild degradations. Previous paradigms exhibit distinct, pre- zoom-in patches (red boxes), previous baselines (e.g., Code-
+dictable failure modes under extreme corruption. GAN and Former, DiffBIR) often struggle with identity preservation
+regression-based priors (e.g., CodeFormer, RestoreFormer) or introduce structural hallucinations under extreme corrup-
+often yield over-smoothed textures or noticeable identity tion. Conversely, DirectFlow faithfully reconstructs intricate
+shifts, failing to hallucinate realistic high-frequency data. facial geometry and textures in a single step, mapping these
+Iterative generative models (e.g., DiffBIR, PMRF) success- severe out-of-distribution states back to the correct facial
+fully recover photorealistic structures but demand prohibitive manifold without succumbing to structural drift.
+multi-step sampling latency. Conversely, standard distilla-
+tion approaches like InterLCM suffer from latent bottleneck
+4.1. Ablation Study
+blurring, leading to slightly waxy skin textures. DirectFlow To validate the necessity of our proposed architectural com-
+successfully circumvents these limitations. By effectively ponents, we conduct an ablation study on the CelebA-Test
+utilizing the semantic adapter and the pixel-space SGCL benchmark, with results summarized in Tab. 3. We establish
+critic, our method recovers precise, high-frequency details a baseline student model trained purely with latent MSE loss
+(such as individual hair strands, skin pores, and specular (Llat ) and standard pixel reconstruction losses, lacking both
+eye reflections) in a single forward pass. The resulting the Semantic Adapter and the SGCL. Qualitative compar-
+perceptual fidelity is highly commensurate with the multi- isons are provided in Fig. 5, where we progressively add the
+step teacher and the ground truth. Furthermore, to validate semantic and degradation adapters, followed by SGCL in the
+out-of-domain generalization, Fig. 6 presents results on the full model. Overall, the semantic adapter mainly improves
+heavily degraded, historical WebPhoto-Test dataset. Direct- global facial structure and alignment, the degradation adapter
+Flow exhibits exceptional generalization to these severe, improves robustness across diverse corruptions, and SGCL
+
+3395
+WebPhoto
+LQ CodeFormer DifFace DiffBIR OSEDiff DirectFlow
+
+FID ↓ Score
+
+Inference Time (ms) per image
+
+31
+Figure 7. (Quality vs. Speed) Left: Naive truncation of the PMRF
+teacher to 1 step results in severe quality collapse (FID=140.2),
+whereas DirectFlow successfully learns the optimal single-step
+mapping. Right: While INT8 quantization accelerates individual
+Figure 6. Qualitative comparison on real-world, out-of-domain steps, it fails to overcome the sequential NFE bottleneck, showing
+historical photos from WebPhoto-Test [62] dataset. model compression cannot replace architectural distillation.
+26
+
+further restores high-frequency details (e.g., skin texture and
+hair strands) while preserving identity and facial geometry. Power Usage Effectiveness (PUE) of 1.1, and a national av-
+Impact of the Semantic Adapter. Removing the DINOv2 erage carbon intensity factor of 0.385 kg CO2 eq per kWh.
+Semantic Adapter fundamentally forces the network to learn
+Table 4. Carbon footprint of reproducing DirectFlow.
+an average transport trajectory across all degradation mani-
+folds. As shown in Tab. 3, this omission results in a notice- Training Phase Equipment GPU Hours Power (W) Total Energy (MWh) CO2 eq (tCO2 eq)
+
+able degradation in perceptual fidelity (a sharp increase in Stage A: Encoder Adaptation
+Stage B: UNet Refinement
+A100
+A100
+140
+52
+400
+400
+0.061
+0.023
+0.024
+0.009
+FID). Without explicit degradation routing, the student fails DirectFlow (Total) A100 192 400 0.084 0.033
+
+to distinguish between heavy blur and severe noise, leading
+to sub-optimal detail hallucination. As detailed in Tab. 4, the total energy required to fully
+Impact of Score-Guided Consistency Loss. The removal reproduce DirectFlow is approximately 0.084 MWh, result-
+of SGCL directly exposes the student to the latent VAE ing in 0.033 tons of CO2 equivalent emissions. By distilling
+bottleneck. While the model remains efficient, the LPIPS the transported posterior mean into a parameter-efficient
+score increases significantly, and the outputs visually lack two-stage optimization schedule, our framework not only re-
+the sharp “super-latent” details discussed in Sec. 3.4.1. The solves the perception-distortion trade-off in a single NFE, but
+inclusion of the SGCL acts as a crucial distributional critic, does so with a carbon footprint that is orders of magnitude
+effectively providing the directional gradients necessary to smaller than training standard flow-matching or multi-step
+pull the one-step prediction onto the natural image manifold. generative priors.
+
+4.2. Architectural Necessity vs. Compression. 5. Conclusion
+To justify our distillation paradigm, we evaluate naive 1-step In this work, we introduced DirectFlow, a highly efficient
+execution of the PMRF teacher. As illustrated in Fig. 7 (Left), framework for blind face restoration that reconciles the
+simply truncating the ODE solver (∆t = 1) causes the ve- perception-distortion trade-off in a single forward pass that
+locity vector to catastrophically overshoot the data manifold, is highly suitable for edge-device deployments. By dis-
+resulting in severe structural distortion (F ID = 140.2). Fur- tilling the transported posterior mean of a flow-matching
+thermore, we address whether standard model compression teacher into a latent consistency student, we eliminate the
+could replace algorithmic step reduction. Fig. 7 (Right) prohibitive latency of iterative ODE solvers. To handle di-
+demonstrates that while INT8 quantization accelerates in- verse, in-the-wild degradations without catastrophic forget-
+dividual function evaluations, it cannot eliminate the se- ting, we proposed a parameter-efficient dual-adaptation strat-
+quential multi-step integration bottleneck required for high egy combining a semantic adapter with transport-adaptive
+fidelity. DirectFlow uniquely resolves this conflict, pushing LoRA matrices. Furthermore, our novel score-guided consis-
+the Pareto frontier to the absolute minimum latency. tency loss actively queries the frozen teacher as a pixel-space
+critic, propelling the student’s output beyond standard latent
+4.3. Broader Impacts and Carbon Footprint reconstruction limits. Extensive experiments demonstrate
+To calculate the precise carbon footprint of reproducing Di- that DirectFlow achieves state-of-the-art perceptual quality
+rectFlow, we adopt the standard estimation methodology and structural fidelity among single-step methods, paving
+established in DINOv2 [35]. We assume a peak power con- the way for real-time, high-fidelity restoration in practical
+sumption of 400W per A100 GPU, a standard data center downstream applications.
+
+3396
+References In Workshop on faces in’Real-Life’Images: detection, align-
+ment, and recognition, 2008. 6
+[1] Theo Adrai, Guy Ohayon, Michael Elad, and Tomer Michaeli.
+[14] Tero Karras, Samuli Laine, and Timo Aila. A style-based
+Deep optimal transport: A practical algorithm for photo-
+generator architecture for generative adversarial networks. In
+realistic image restoration. Advances in Neural Information
+Proceedings of the IEEE/CVF conference on computer vision
+Processing Systems, 36:61777–61791, 2023. 6
+and pattern recognition, pages 4401–4410, 2019. 6
+[2] Eirikur Agustsson, David Minnen, George Toderici, and
+Fabian Mentzer. Multi-realism image compression with a [15] Junjie Ke, Qifei Wang, Yilin Wang, Peyman Wu, and Ming-
+conditional generator. In Proceedings of the IEEE/CVF Con- Hsuan Yang. Musiq: Multi-scale image quality transformer.
+ference on Computer Vision and Pattern Recognition (CVPR), In Proceedings of the IEEE/CVF International Conference
+pages 22324–22333, 2023. 1 on Computer Vision (ICCV), 2021. 3, 6
+[3] Yochai Blau and Tomer Michaeli. Rethinking lossy compres- [16] Haoying Li, Yifan Yang, Meng Chang, Shiqi Chen, Huajun
+sion: The rate-distortion-perception tradeoff. In Proceedings Feng, Zhiyuan Xu, Qi Li, and Yueting Chen. Srdiff: Single
+of the 36th International Conference on Machine Learning, image super-resolution with diffusion probabilistic models.
+pages 675–685. PMLR, 2019. 1, 2, 4, 6 In Neurocomputing, pages 47–59, 2022. 2
+[4] Mathilde Caron, Hugo Touvron, Ishan Misra, Hervé Jégou, [17] Senmao Li, Kai Wang, Joost van de Weijer, Fahad Shahbaz
+Julien Mairal, Piotr Bojanowski, and Armand Joulin. Emerg- Khan, Chun-Le Guo, Shiqi Yang, Yaxing Wang, Jian Yang,
+ing properties in self-supervised vision transformers. In ICCV, and Ming-Ming Cheng. Interlcm: Low-quality images as
+2021. 3 intermediate states of latent consistency models for effective
+[5] Ting Chen, Simon Kornblith, Mohammad Norouzi, and Ge- blind face restoration. In ICLR, 2025. 2, 3, 4, 6
+offrey Hinton. A simple framework for contrastive learning [18] Xiaoming Li, Chaofeng Chen, Shangchen Zhou, Xianhui Lin,
+of visual representations. In International Conference on Wangmeng Zuo, and Lei Zhang. Blind face restoration via
+Machine Learning (ICML), 2020. 3 deep multi-scale component dictionaries. In ECCV, 2020. 6
+[6] Xiaoxu Chen, Jingfan Tan, Tao Wang, Kaihao Zhang, Wen- [19] Yuheng Li, Haotian Liu, Qingyang Wu, Fangzhou Mu, Jian-
+han Luo, and Xiaocun Cao. Towards real-world blind face wei Yang, Jianfeng Gao, Chunyuan Li, and Yong Jae Lee.
+restoration with generative diffusion prior, 2023. 6 Gligen: Open-set grounded text-to-image generation. In
+[7] Yu Chen, Ying Tai, Xiaoming Liu, Chunhua Shen, and Jian CVPR, 2023. 3
+Yang. End-to-end learning face super-resolution with facial [20] Zhen Li, Mingdeng Cao, Xintao Wang, Zhongang Qi, Ming-
+priors. In Proceedings of the IEEE Conference on Computer Ming Cheng, and Ying Shan. Photomaker: Customizing real-
+Vision and Pattern Recognition (CVPR), pages 2492–2501, istic human photos via stacked id embedding. arXiv preprint
+2018. 2 arXiv:2312.04461, 2023. 3
+[8] Yuchao Gu, Xintao Wang, Liangbin Xie, Chao Dong, Gen Li, [21] Jingyun Liang, Jiezhang Cao, Guolei Sun, Kai Zhang, Luc
+Ying Shan, and Ming-Ming Cheng. Vqfr: Blind face restora- Van Gool, and Radu Timofte. Swinir: Image restoration
+tion with vector-quantized dictionary and parallel decoder. In using swin transformer. In Proceedings of the IEEE/CVF
+European Conference on Computer Vision, pages 126–143. international conference on computer vision, pages 1833–
+Springer, 2022. 2, 6 1844, 2021. 1
+[9] Kaiming He, Haoqi Fan, Yuxin Wu, Saining Xie, and Ross [22] Changlin Lin et al. Ctrl-adapter: An efficient and versatile
+Girshick. Momentum contrast for unsupervised visual repre- framework for adapting diffusion models to new controls.
+sentation learning. In Proceedings of the IEEE/CVF Confer- arXiv preprint arXiv:2404.00000, 2024. 3
+ence on Computer Vision and Pattern Recognition (CVPR),
+[23] Xinqi Lin, Jingwen He, Ziyan Chen, Zhaoyang Lyu, Bo Dai,
+2020. 3
+Fanghua Yu, Wanli Ouyang, Yu Qiao, and Chao Dong. Diffbir:
+[10] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr
+Towards blind image restoration with generative diffusion
+Dollár, and Ross Girshick. Masked autoencoders are scalable
+prior. In CVPR, 2024. 1, 2, 6
+vision learners. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition (CVPR), pages [24] Yaron Lipman, Ricky T. Q. Chen, Heli Ben-Hamu, Maxim-
+16000–16009, 2022. 3 ilian Nickel, and Matthew Le. Flow matching for genera-
+[11] Martin Heusel, Hubert Ramsauer, Thomas Unterthiner, Bern- tive modeling. In The Eleventh International Conference on
+hard Nessler, and Sepp Hochreiter. Gans trained by a two Learning Representations, 2023. 2, 4
+time-scale update rule converge to a local nash equilibrium. [25] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight
+Advances in neural information processing systems, 30, 2017. and fast: Learning to generate and transfer data with rectified
+1, 6 flow. In ICLR, 2023. 2, 4
+[12] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, [26] Ziwei Liu, Ping Luo, Xiaogang Wang, and Xiaoou Tang.
+Yuanzhi Li, Shean Wang, and Weizhu Chen. Lora: Low- Deep learning face attributes in the wild. In ICCV, 2015. 6
+rank adaptation of large language models. In International [27] Simian Luo, Yiqin Tan, Suraj Patil, Daniel Gu, Patrick
+Conference on Learning Representations (ICLR), 2022. 3, 6 Von Platen, Apolina kario Passos, Longbo Huang, Jian Li,
+[13] Gary B Huang, Marwan Mattar, Tamara Berg, and Eric and Hang Zhao. Lcm-lora: A universal stable-diffusion accel-
+Learned-Miller. Labeled faces in the wild: A database eration module. arXiv preprint arXiv:2311.05556, 2023. 3,
+forstudying face recognition in unconstrained environments. 5
+
+3397
+[28] Simian Luo, Yiqin Tan, Longbo Huang, Jian Li, and Hang [44] Jianyi Wang, Zongsheng Yue, Shangchen Zhou, Kelvin CK
+Zhao. Latent consistency models: Synthesizing high- Chan, and Chen Change Loy. Exploiting diffusion prior for
+resolution images with few-step inference, 2024. 2 real-world image super-resolution. International Journal of
+[29] Ziwei Luo et al. Towards degradation-aware visual assis- Computer Vision, 132(12):5929–5949, 2024. 1, 2
+tant: A survey on restoration-oriented ssl. arXiv preprint [45] Xintao Wang, Yu Li, Honglun Zhang, and Ying Shan. To-
+arXiv:2401.xxxxx, 2024. 3 wards real-world blind face restoration with generative facial
+[30] Sachit Menon, Alexandru Damian, Shijia Hu, Nikhil Ravi, prior. In CVPR, 2021. 2, 6
+and Cynthia Rudin. Pulse: Self-supervised photo upsam- [46] Xintao Wang, Liangbin Xie, Chao Dong, and Ying Shan.
+pling via latent space exploration of generative models. In Real-esrgan: Training real-world blind super-resolution with
+IEEE/CVF Conference on Computer Vision and Pattern pure synthetic data. In Proceedings of the IEEE/CVF inter-
+Recognition (CVPR), 2020. 6 national conference on computer vision, pages 1905–1914,
+[31] Fabian Mentzer, George D Toderici, Michael Tschannen, and 2021. 6
+Eirikur Agustsson. High-fidelity generative image compres- [47] Zhou Wang, A.C. Bovik, H.R. Sheikh, and E.P. Simoncelli.
+sion. In Advances in Neural Information Processing Systems, Image quality assessment: from error visibility to structural
+pages 11913–11924. Curran Associates, Inc., 2020. 1 similarity. IEEE Transactions on Image Processing, 13(4):
+[32] Yunqi Miao, Jiankang Deng, and Jungong Han. Waveface: 600–612, 2004. 1
+Authentic face restoration with efficient frequency recovery. [48] Zhouxia Wang, Jiawei Zhang, Runjian Chen, Wenping Wang,
+CVPR, 2024. 6 and Ping Luo. RestoreFormer: High-Quality Blind Face
+[33] Chong Mou, Xintao Wang, Liangbin Xie, Jian Zhang, Zhon- Restoration from Undegraded Key-Value Pairs . In 2022
+gang Qi, Ying Shan, and Gui-Song Xia. T2i-adapter: Learn- IEEE/CVF Conference on Computer Vision and Pattern
+ing adapters to dig out t2i diffusion models for adaptable Recognition (CVPR), pages 17491–17500, Los Alamitos, CA,
+control. In CVPR, 2024. 3 USA, 2022. IEEE Computer Society. 6
+[34] Guy Ohayon, Tomer Adrai, Michael Elad, and Tomer
+[49] Zhouxia Wang, Jiawei Zhang, Tianshui Chen, Wenping Wang,
+Michaeli. Posterior-mean rectified flow: Towards minimum
+and Ping Luo. Restoreformer++: Towards real-world blind
+mse photo-realistic image restoration. In International Con-
+face restoration from undegraded key-value pairs. IEEE Trans.
+ference on Machine Learning (ICML), 2024. 2, 4, 6, 7
+Pattern Anal. Mach. Intell., 45(12):15462–15476, 2023. 6
+[35] Maxime Oquab, Timothée Darcet, Théo Moutakanni, Huy Vo,
+[50] Zhixin Wang, Ziying Zhang, Xiaoyun Zhang, Huangjie
+Marc Szafraniec, Vasil Vasiljevic, Panteleimon Sun, Gautier
+Zheng, Mingyuan Zhou, Ya Zhang, and Yanfeng Wang. Dr2:
+Pinto, Maxim Krishnan, Gabriel Synnaeve, et al. Dinov2:
+Diffusion-based robust degradation remover for blind face
+Learning robust visual features without supervision. arXiv
+restoration. In Proceedings of the IEEE/CVF Conference on
+preprint arXiv:2304.07193, 2023. 3, 4, 6, 8
+Computer Vision and Pattern Recognition, pages 1704–1713,
+[36] Ben Poole, Ajay Jain, Jonathan T Barron, and Ben Mildenhall.
+2023. 1, 2, 6
+Dreamfusion: Text-to-3d using 2d diffusion. arXiv preprint
+arXiv:2209.14988, 2022. 5 [51] Zhenda Xie, Zheng Zhang, Yue Cao, Yutong Lin, Jianmin
+Bao, Zhuliang Yao, Qi Dai, and Han Hu. Simmim: A simple
+[37] Can Qin et al. Unicontrol: A unified conditional dif-
+framework for masked image modeling. In Proceedings of
+fusion model with fine-grained control. arXiv preprint
+the IEEE/CVF Conference on Computer Vision and Pattern
+arXiv:2305.11147, 2023. 3
+Recognition (CVPR), pages 9653–9663, 2022. 3
+[38] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, [52] Peiqing Yang, Shangchen Zhou, Qingyi Tao, and
+Amanda Askell, Prowizor Mishkin, Jack Clark, et al. Learning Chen Change Loy. PGDiff: Guiding diffusion models for
+transferable visual models from natural language supervision. versatile face restoration via partial guidance. In NeurIPS,
+In ICML, 2021. 3, 4 2023. 6
+[39] Robin Rombach, Andreas Blattmann, Dominik Lorenz, [53] Tao Yang, Peiran Ren, Xuansong Xie, and Lei Zhang. Gan
+Patrick Esser, and Björn Ommer. High-resolution image prior embedded network for blind face restoration in the wild.
+synthesis with latent diffusion models. In CVPR, 2022. 2, 4, In Proceedings of the IEEE/CVF Conference on Computer
+6 Vision and Pattern Recognition (CVPR), pages 672–681, 2021.
+[40] Tim Salimans and Jonathan Ho. Progressive distillation for 2
+fast sampling of diffusion models. In ICLR, 2022. 3 [54] Hu Ye, Junping Zhang, Sanyuan Liu, Wei Han, and Xiao Yang.
+[41] Axel Sauer, Dominik Lorenz, Andreas Blattmann, and Robin Ip-adapter: Text compatible image prompt adapter for text-to-
+Rombach. Adversarial diffusion distillation. In Computer image diffusion models. arXiv preprint arXiv:2308.06721,
+Vision – ECCV 2024: 18th European Conference, Milan, Italy, 2023. 3
+September 29–October 4, 2024, Proceedings, Part LXXXVI, [55] Xin Yu, Basura Fernando, Bernard Ghanem, Fatih Porikli,
+page 87–103, Berlin, Heidelberg, 2024. Springer-Verlag. 3 and Artur d’Avila Garcez. Face hallucination with finite
+[42] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Shamir. state machine and facial landmark. In Proceedings of the
+Consistency models. arXiv preprint arXiv:2303.01469, 2023. IEEE Conference on Computer Vision and Pattern Recogni-
+2, 3, 4 tion (CVPR), 2018. 2
+[43] Céric Villani. Optimal Transport: Old and New. Springer, [56] Zongsheng Yue and Chen Change Loy. Difface: Blind face
+2009. 3, 4 restoration with diffused error contraction. IEEE Transactions
+
+3398
+on Pattern Analysis and Machine Intelligence, 46(12):9991–
+10004, 2024. 6
+[57] Lingbo Zhan et al. X-adapter: Adding predictions to frozen
+diffusion models. arXiv preprint arXiv:2401.00000, 2024. 3
+[58] Kai Zhang et al. Revisiting self-supervised features for blind
+image quality assessment. arXiv preprint arXiv:2402.xxxxx,
+2024. 3
+[59] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding
+conditional control to text-to-image diffusion models. In
+Proceedings of the IEEE/CVF international conference on
+computer vision, pages 3836–3847, 2023. 3, 6
+[60] Richard Zhang, Phillip Isola, Alexei A. Efros, Eli Shecht-
+man, and Oliver Wang. The unreasonable effectiveness of
+deep features as a perceptual metric. In Proceedings of the
+IEEE Conference on Computer Vision and Pattern Recogni-
+tion (CVPR), 2018. 1, 5, 6
+[61] Shihao Zhao, Dongdong Chen, Yuan-Chih Chen, Jianmin
+Bao, Pengchuang Shao, Enze Tan, Bin Liao, Gang Zhou, Lu
+Liu, Zehua Yuan, et al. Uni-controlnet: All-in-one control
+adapter for text-to-image diffusion models. NeurIPS, 2024. 3
+[62] Shangchen Zhou, Kelvin Chan, Chongyi Li, and Chen Change
+Loy. Towards robust blind face restoration with codebook
+lookup transformer. In NeurIPS, pages 30599–30611, 2022.
+2, 6, 8
+
+3399

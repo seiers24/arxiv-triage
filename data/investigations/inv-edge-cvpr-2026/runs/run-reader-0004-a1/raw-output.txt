@@ -1,0 +1,179 @@
+{
+  "schema_version": "2.0",
+  "role": "paper_reader",
+  "job_type": "paper_read",
+  "agent_run_id": "run-reader-0004-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-dd0295bc04820f56",
+  "source_document_id": "src-a36b84b75db3c707",
+  "input_hash": "43197dc8f84e8c33d79e3e1b008b53117c3684e0418efb126da28e65ebf0205b",
+  "problem": "Unified vision-language training is computationally expensive, and token reduction must contend with different image-token dependencies in visual understanding and autoregressive visual generation.",
+  "method": "The paper measures layerwise attention allocation in VILA-U, then evaluates task-specific token-reduction accelerators: HiMix removes image-token queries for understanding, while HMGen alternates full and shallow layers and separates image/text projections for generation before testing their combination in unified training.",
+  "claims": [
+    {
+      "claim_id": "claim-0001",
+      "claim_kind": "problem",
+      "text": "The paper motivates training efficiency by stating that VILA-U requires approximately 20K A100 GPU hours.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 3805,
+        "end_char": 4025,
+        "quote": "However, the training of these models specific attention patterns in unified VLMs, identifying\nis prohibitively expensive; for instance, VILA-U [39] re- distinct redundancy zones.\nquires approximately 20K A100 GPU hours."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "none_stated",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0002",
+      "claim_kind": "result",
+      "text": "The attention analysis reports late-layer visual redundancy for understanding but persistent and increasing image-token attention across depth for generation.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 11647,
+        "end_char": 12397,
+        "quote": "Figure 3. Quantitative attention allocation reveals depth-dependent visual redundancy asymmetry. Left: Attention mass distribution\nover token segments (system, image, instruction, output) at representative shallow and deep layers. Right: Layerwise attention allocation\nacross the full transformer depth. For visual understanding (top), attention to image tokens sharply decreases in deeper layers, while in-\nstruction and output tokens dominate, indicating substantial late-layer visual redundancy. In contrast, visual generation (bottom) maintains\nconsistently high attention to image tokens across layers, with increasing allocation to output image tokens in deep layers, reflecting per-\nsistent autoregressive dependence on generated image tokens."
+      },
+      "evidence_modality": "observational",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0003",
+      "claim_kind": "method",
+      "text": "HiMix reduces understanding computation by removing image tokens from queries while retaining them in key/value projections, preserving text-to-image attention while eliminating image-to-image attention.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 15198,
+        "end_char": 15406,
+        "quote": "(2) HiMix (Under-\nstanding) reduce image tokens from the query stream while retaining them in key/value projections, eliminating quadratic image-to-image\nattention while preserving text-to-image interactions."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0004",
+      "claim_kind": "result",
+      "text": "In the understanding-only comparison, HiMix is reported to reduce training FLOPs to 0.24x of VILA-U, a 76% reduction, with moderate degradation across GQA, MME, POPE, and SeedBench.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 19037,
+        "end_char": 19371,
+        "quote": "Table 1. HiMix for visual understanding. Performance and computational cost comparison between the understanding-only VILA-U\nbaseline and HiMix. HiMix reduces training FLOPs to 0.24× (76% reduction) by removing image-token queries, while incurring only\nmoderate performance degradation across GQA, MME, POPE, and SeedBench benchmarks."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0005",
+      "claim_kind": "method",
+      "text": "HMGen keeps full autoregressive attention in full layers with separate image/text projections, while shallow layers skip image-token attention and feed-forward updates and forward image-token hidden states.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 15407,
+        "end_char": 15757,
+        "quote": "(3) HMGen–Full layer (Generation) maintains full autoregressive attention but sep-\narates image- and text-related projections for stable hierarchical conditioning. (4) HMGen–Shallow layer (Generation) skips image-token\nattention and feed-forward updates, forwarding their hidden states to reduce computation while preserving autoregressive structure."
+      },
+      "evidence_modality": "none_stated",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0006",
+      "claim_kind": "result",
+      "text": "For generation-only evaluation on MJHQ-30K, the table reports VILA-U at 17.45 and 1x FLOPs, HMGen with three shallow layers at 12.16 and 0.85x, and HMGen with five shallow layers at 12.55 and 0.75x.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 24736,
+        "end_char": 24900,
+        "quote": "Method #Shallow Layers MJHQ-30K FLOPs\ntokens, giving O(8T d2 ): VILA-U (G-only) 0 17.45 1×\nHMGen 3 12.16 0.85x\nCostshallow = O T 2 d + 8T d2 .\n\u0001\nHMGen 5 12.55 0.75x"
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0007",
+      "claim_kind": "result",
+      "text": "The unified baseline is reported to improve both understanding, including GQA 0.5600 versus 0.5286, and generation, with MJHQ 15.78 versus 17.45, relative to single-task baselines.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 29404,
+        "end_char": 29632,
+        "quote": "Table 3. Unified training performance and efficiency. The unified baseline improves both understanding (e.g., GQA 0.5600 vs. 0.5286\nU-only) and generation (MJHQ 15.78 vs. 17.45 G-only), demonstrating positive cross-task synergy."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0008",
+      "claim_kind": "limitation",
+      "text": "Combining HiMix and HMGen under unified training reduced FLOPs to 0.55–0.56x but degraded both objectives, including GQA to 0.4705 or 0.3300 and MJHQ to 14.54 or 12.53.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 29633,
+        "end_char": 29910,
+        "quote": "However, combining HiMix and\nHMGen under joint training substantially reduces FLOPs (0.55–0.56×) but degrades performance on both objectives (e.g., GQA drops to\n0.4705/0.3300 and MJHQ worsens to 14.54/12.53), indicating that task-specific token reduction disrupts mutual gains."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0009",
+      "claim_kind": "result",
+      "text": "Relative to fully shared HiMix–HMGen, partial sharing raised GQA from 33 to 47.05 and POPE F1 from 67.59 to 76.58, while MJHQ-30K changed from 12.53 to 14.54.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 32928,
+        "end_char": 33294,
+        "quote": "From Table 3, HiMix–HMGen (Share Partial) combined under unified training, they induce a consistent\nimproves over the fully shared variant significantly: GQA synergy loss, as task-specific token dropping leads to diver-\nincreases from 33 to 47.05, POPE F1 from 67.59 to 76.58, gent parameter usage and removes the mutual performance\nand MJHQ-30K from 12.53 to 14.54."
+      },
+      "evidence_modality": "experiment",
+      "execution_environment": "software_runtime",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    },
+    {
+      "claim_id": "claim-0010",
+      "claim_kind": "assumption",
+      "text": "The HiMix complexity argument treats image tokens as greatly outnumbering text tokens when identifying the dominant quadratic image-attention term.",
+      "source_locator": {
+        "document_sha256": "812bcd360ab30e3c9df39759473bd0a31660e53fff2d0f015d6c0021443ec193",
+        "section_id": "sec-0001",
+        "start_char": 18242,
+        "end_char": 18294,
+        "quote": "When M ≫ T , the dominant O(M 2 d) attention term is"
+      },
+      "evidence_modality": "theory",
+      "execution_environment": "not_applicable",
+      "provenance": "paper_stated",
+      "status": "unverified"
+    }
+  ],
+  "warnings": [
+    "The supplied source does not name an official EDGE CFP topic, so the exact workshop-topic mapping cannot be source-verified from this paper alone.",
+    "The source reports FLOPs, attention statistics, and software benchmark results but does not state measurements on physical target hardware or complete device/runtime conditions.",
+    "The normalized PDF text interleaves two columns in several passages; all locators preserve the exact supplied normalized substrings."
+  ]
+}

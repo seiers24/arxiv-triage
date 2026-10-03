@@ -1,0 +1,89 @@
+{
+  "schema_version": "2.0",
+  "profile_id": "edge-cvpr-2026",
+  "component": "workshop-analysis",
+  "origin": "template_derived",
+  "criteria": [
+    {
+      "criterion_id": "workshop_fit",
+      "definition": "Strength of the supported connection to the frozen EDGE CFP topics: efficient generative-model architecture, training, inference, data use, deployment, or application-specific generation.",
+      "score_type": "integer_0_5",
+      "weight": 2,
+      "gate": true,
+      "anchors": {
+        "0": "No supported contribution addresses an EDGE CFP topic.",
+        "1": "The connection is adjacent or depends mainly on motivation rather than a relevant contribution.",
+        "2": "One CFP topic is present, but efficiency or on-device relevance is secondary or weakly supported.",
+        "3": "A supported method or result clearly addresses at least one CFP topic.",
+        "4": "A central supported contribution directly addresses a core efficiency or deployment topic.",
+        "5": "Multiple central supported contributions directly address core EDGE topics with unusually strong alignment."
+      }
+    },
+    {
+      "criterion_id": "evidence_strength",
+      "definition": "Quality, completeness, and scope of evidence supporting the paper's relevant claims.",
+      "score_type": "integer_0_5",
+      "weight": 2,
+      "gate": false,
+      "anchors": {
+        "0": "No supported evaluation bears on the relevant claims.",
+        "1": "Evidence is qualitative, anecdotal, or omits essential comparison details.",
+        "2": "A limited evaluation exists, but baselines, settings, metrics, or key controls are materially incomplete.",
+        "3": "Relevant claims have a reasonable bounded evaluation with named metrics, baselines, and scope.",
+        "4": "Evidence is broad and controlled across multiple meaningful baselines, settings, or ablations.",
+        "5": "Evidence is unusually comprehensive, well-controlled, and reproducible across representative conditions."
+      }
+    },
+    {
+      "criterion_id": "efficiency_result",
+      "definition": "Strength of supported efficiency improvements against meaningful baselines while preserving the measured quality tradeoff and experimental scope.",
+      "score_type": "integer_0_5",
+      "weight": 2,
+      "gate": false,
+      "anchors": {
+        "0": "No supported efficiency result is reported.",
+        "1": "Efficiency is asserted without a useful quantitative comparison.",
+        "2": "A quantitative result exists, but the baseline, scope, or quality tradeoff is weak or incomplete.",
+        "3": "A meaningful baseline and efficiency metric show a bounded improvement with the quality tradeoff visible.",
+        "4": "Consistent improvements appear across multiple meaningful baselines or workloads with tradeoffs controlled.",
+        "5": "Large, robust improvements are supported across representative settings with unusually strong comparability."
+      }
+    },
+    {
+      "criterion_id": "deployment_realism",
+      "definition": "How directly the supplied evidence measures operation in the claimed target environment rather than relying on motivation, proxy metrics, or simulation.",
+      "score_type": "integer_0_5",
+      "weight": 1.5,
+      "gate": false,
+      "anchors": {
+        "0": "No supported deployment evidence is supplied.",
+        "1": "The target environment is motivational only.",
+        "2": "Evidence uses a simulator, software proxy, modeled cost, or non-target hardware.",
+        "3": "At least one relevant physical device measurement is reported, but the setup or workload is narrow.",
+        "4": "Realistic end-to-end measurements cover multiple workloads, conditions, or target devices.",
+        "5": "Deployment evidence is unusually complete, including representative devices and operational constraints such as memory, energy, or thermals."
+      }
+    },
+    {
+      "criterion_id": "extension_leverage",
+      "definition": "Availability of a concrete, testable next step grounded in supported results, limitations, or assumptions; this score is an explicitly reasoned assessment, not a paper-stated fact.",
+      "score_type": "integer_0_5",
+      "weight": 1.5,
+      "gate": false,
+      "anchors": {
+        "0": "The supplied evidence does not support a concrete next experiment.",
+        "1": "Only a generic direction can be stated.",
+        "2": "A testable direction exists, but feasibility or expected value is weakly grounded.",
+        "3": "A concrete and feasible experiment follows from a supported result, limitation, or assumption.",
+        "4": "The next experiment has strong leverage and clear measurements, comparisons, and practical prerequisites.",
+        "5": "The evidence exposes an unusually valuable, feasible extension with decisive tests and broad workshop relevance."
+      }
+    }
+  ],
+  "human_review_triggers": [
+    "A degraded or abstract-only source prevents a material workshop assessment.",
+    "A hardware, energy, latency, or on-device claim cannot be tied to an exact execution environment.",
+    "A material baseline, metric, quality tradeoff, or experimental scope cannot be reconciled from the frozen source."
+  ],
+  "profile_hash": "2890ca504aeee16a70c43a4f30ef912dc89cda9a20f519d5483a205656b371b8"
+}

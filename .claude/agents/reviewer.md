@@ -43,6 +43,10 @@ included paper and must appear in included analysis accounting.
 Verify the barrier again. A task that contradicts its counts or artifacts is
 not a valid `ReviewerTask`; do not improvise a review artifact for it.
 
+Apply `reviewer_rubric.checks` in their supplied order. They may constrain
+component comparisons and report wording, but they cannot weaken accounting,
+evidence-reference, support, uncertainty, or readiness rules.
+
 ## Hard boundaries
 
 - Do not use tools, fetch, browse, inspect repository files, invoke scripts, or

@@ -1,0 +1,98 @@
+[
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-arxiv-2605.28067",
+    "title": "BlazeEdit: Generalist Image Editing on Mobile Devices with Image-to-Image Diffusion Models",
+    "authors": ["Fei Deng", "Yanwu Xu", "Zhipeng Bao", "Zhixing Zhang", "Haolin Jia", "Karthik Raveendran", "Jianing Wei"],
+    "published": "2026-05-27T07:23:59Z",
+    "identifiers": [
+      {
+        "scheme": "arxiv",
+        "value": "2605.28067v1",
+        "url": "https://arxiv.org/abs/2605.28067v1"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "a0b3dc9b42daee02680e3f06654244debf08e0618503787bfca61f3fbb051f60"
+  },
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-openreview-edge-diffusion",
+    "title": "EdgeDiffusion: Latency-Optimized Diffusion Models for Real-Time On-Device Visual Anonymization",
+    "authors": ["Zihao Han", "Xueyan Gong", "Fengyi Wu", "Yifei Dong", "Jingqi Xu", "Jingdong Sun", "Feng Liu", "Siyu Huang", "Zhi-Qi Cheng"],
+    "published": null,
+    "identifiers": [
+      {
+        "scheme": "openreview",
+        "value": "fbdfef2f13afeb53403a53dce7629c57364d9d1a",
+        "url": "https://openreview.net/pdf/fbdfef2f13afeb53403a53dce7629c57364d9d1a.pdf"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "0e598558f2b2d93bcaccfb34f66f310f6d17d7264882619548604b2fea5d6a60"
+  },
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-openreview-energy-adaptive",
+    "title": "Energy-Adaptive Diffusion via Dynamic Token Pruning for Carbon-Efficient On-Device Generation",
+    "authors": ["Mahule Roy", "Subhas Roy"],
+    "published": null,
+    "identifiers": [
+      {
+        "scheme": "openreview",
+        "value": "LZETHS7Ou8",
+        "url": "https://openreview.net/pdf?id=LZETHS7Ou8"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "d38e0833fe1024f9c1caa299fcc1c28219495714d22121758a9e191e208f9306"
+  },
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-arxiv-2602.12128",
+    "title": "HLA: Hadamard Linear Attention",
+    "authors": ["Hanno Ackermann", "Hong Cai", "Mohsen Ghafoorian", "Amirhossein Habibian"],
+    "published": "2026-02-12T16:16:47Z",
+    "identifiers": [
+      {
+        "scheme": "arxiv",
+        "value": "2602.12128v1",
+        "url": "https://arxiv.org/abs/2602.12128v1"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "6e344260fcd68e174b997dae2aff7c868e3e83b21ccc5b30bf03f73bc7d32ffb"
+  },
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-arxiv-2602.16968",
+    "title": "DDiT: Dynamic Patch Scheduling for Efficient Diffusion Transformers",
+    "authors": ["Dahye Kim", "Deepti Ghadiyaram", "Raghudeep Gadde"],
+    "published": "2026-02-19T00:15:20Z",
+    "identifiers": [
+      {
+        "scheme": "arxiv",
+        "value": "2602.16968v1",
+        "url": "https://arxiv.org/abs/2602.16968v1"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "06a4fa9d705b43d5fc1fe9c1daca1f165cf14f5c55bcdf0b3d96cbf02d9a1ba7"
+  },
+  {
+    "schema_version": "2.0",
+    "paper_id": "paper-arxiv-2604.09168",
+    "title": "ELT: Elastic Looped Transformers for Visual Generation",
+    "authors": ["Sahil Goyal", "Swayam Agrawal", "Gautham Govind Anil", "Prateek Jain", "Sujoy Paul", "Aditya Kusupati"],
+    "published": "2026-04-10T09:53:27Z",
+    "identifiers": [
+      {
+        "scheme": "arxiv",
+        "value": "2604.09168v1",
+        "url": "https://arxiv.org/abs/2604.09168v1"
+      }
+    ],
+    "identity_status": "resolved_exact",
+    "identity_hash": "edf895137c30fea74c600eafb4a21f007f39fc4f6c272a8d05d7ffcb3cddc867"
+  }
+]

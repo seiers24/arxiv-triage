@@ -40,8 +40,8 @@ selected, abstract-only, complete, unresolved, and failed counts.
 - Keep repository-wide constraints in `AGENTS.md` and move orchestrator-specific
   responsibilities to `docs/roles/orchestrator.md`.
 - Add `.claude/agents/paper-screener.md` as a third, bounded worker role. It
-  receives batches of frozen titles and abstracts plus one objective and emits
-  screening records only.
+  receives batches of frozen titles and abstracts plus one screening scope and
+  objective profile, and emits screening records only.
 - Do not let the orchestrator personally screen abstracts; it dispatches,
   validates, and routes screening results.
 
@@ -55,9 +55,10 @@ Each query candidate must receive exactly one state:
 - `needs_review`: the abstract is ambiguous, incomplete, or plausibly relevant.
 
 Both `selected` and `needs_review` proceed to source acquisition. Screening
-records include the candidate ID, objective hash, state, concise reason, and
-any abstract spans supporting the decision. A deterministic cap may limit a
-run only after these states and reasons have been preserved.
+records bind the candidate ID and hash, objective and scope hashes, state,
+concise reason, and any exact title or abstract spans supporting the decision.
+The first slice screens every frozen semantic candidate and has no post-freeze
+processing cap.
 
 The screener is a conservative gate, not a ranker. It may emit `screened_out`
 only when the supplied title and abstract establish an explicit exclusion or
@@ -66,10 +67,10 @@ an unclear contribution, or uncertainty about the connection routes the
 candidate to `needs_review`; absence of detail in an abstract is not evidence
 that the full paper is irrelevant.
 
-A processing budget must not relabel an otherwise selected candidate as
-`screened_out`. Candidates beyond a deterministic run cap remain visibly
-deferred for a later run. Evaluation uses a predeclared, deterministically
-selected audit sample of `screened_out` candidates to measure false negatives.
+A future processing cap or deterministic hard-exclusion path requires a
+separate visible disposition and decision artifact; neither exists in the
+first slice. Evaluation uses a predeclared, deterministically selected audit
+sample of `screened_out` candidates to measure false negatives.
 
 ### Gate
 
@@ -85,7 +86,7 @@ Update `docs/schema.md` before code or prompts.
 Define:
 
 - `CandidatePaper`: frozen metadata and abstract used for screening.
-- `ScreeningDispatch` and `ScreeningRecord`.
+- `ScreeningScope`, `CandidateSet`, `ScreeningTask`, and `ScreeningRecord`.
 - `RawSourceArtifact`: format, exact-version URL, local path, byte hash, size,
   acquisition timestamp, and error when applicable.
 - `ExtractionReport`: extractor name/version, status, warnings, character and

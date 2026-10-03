@@ -542,6 +542,12 @@ def validate_investigation_reader_output(
     return validate_reader_output(task, value)
 
 
+def validate_investigation_screening_output(task: object, value: object) -> object:
+    from arxiv_triage.models.screening import validate_screening_output
+
+    return validate_screening_output(task, value)
+
+
 def validate_investigation_critic_output(task: object, value: object) -> object:
     from arxiv_triage.models.critic import validate_critic_output
 

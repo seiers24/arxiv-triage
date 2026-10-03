@@ -15,13 +15,15 @@ from .artifacts import (
     sha256_file,
     sha256_json,
 )
-from .sqlite import SQLiteIndex, StorageSchemaError
+from .sqlite import INDEX_SCHEMA_VERSION, SQLiteIndex, StorageSchemaError
+from .project import project_repository
 from .trace import TraceAppender, TraceFormatError, event_idempotency_key, iter_trace
 
 __all__ = [
     "ArtifactCollisionError",
     "ArtifactRef",
     "ArtifactStore",
+    "INDEX_SCHEMA_VERSION",
     "RunBundlePaths",
     "SQLiteIndex",
     "StorageSchemaError",
@@ -30,6 +32,7 @@ __all__ = [
     "canonical_json_bytes",
     "event_idempotency_key",
     "iter_trace",
+    "project_repository",
     "sha256_bytes",
     "sha256_file",
     "sha256_json",

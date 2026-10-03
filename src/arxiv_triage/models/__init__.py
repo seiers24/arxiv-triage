@@ -36,6 +36,7 @@ from .investigation import (
     SearchPlan,
 )
 from .paper import PaperIdentifier, PaperIdentity
+from .paper_state import PaperStateRecord
 from .reader import (
     Claim,
     ReaderFocus,
@@ -72,6 +73,16 @@ from .run import (
     ValidationCheck,
     ValidationRecord,
 )
+from .screening import (
+    CandidatePaper,
+    CandidateSet,
+    ScreeningDecision,
+    ScreeningEvidenceSpan,
+    ScreeningRecord,
+    ScreeningScope,
+    ScreeningTask,
+    validate_screening_output,
+)
 from .source import SourcePacket, SourceSection
 
 __all__ = [
@@ -79,6 +90,8 @@ __all__ = [
     "AgentRun",
     "AgentRunStatus",
     "AssessmentReviewRef",
+    "CandidatePaper",
+    "CandidateSet",
     "Claim",
     "ClaimReviewRef",
     "ClaimVerdict",
@@ -103,6 +116,7 @@ __all__ = [
     "OutcomeRecord",
     "PaperIdentifier",
     "PaperIdentity",
+    "PaperStateRecord",
     "PositiveInt",
     "ReaderFocus",
     "ReaderRecord",
@@ -120,6 +134,11 @@ __all__ = [
     "Role",
     "Score",
     "SearchPlan",
+    "ScreeningDecision",
+    "ScreeningEvidenceSpan",
+    "ScreeningRecord",
+    "ScreeningScope",
+    "ScreeningTask",
     "Sha256",
     "SourceLocator",
     "SourcePacket",
@@ -140,4 +159,5 @@ __all__ = [
     "validate_critic_output",
     "validate_reader_output",
     "validate_reviewer_output",
+    "validate_screening_output",
 ]

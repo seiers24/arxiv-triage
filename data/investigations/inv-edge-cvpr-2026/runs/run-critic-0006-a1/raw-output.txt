@@ -1,0 +1,140 @@
+{
+  "schema_version": "2.0",
+  "role": "critic",
+  "job_type": "paper_critique",
+  "agent_run_id": "run-critic-0006-a1",
+  "investigation_id": "inv-edge-cvpr-2026",
+  "paper_id": "paper-cvf-422bb466fbdc5e02",
+  "reader_run_id": "run-reader-0006-a2",
+  "input_hash": "2fd493d3e4ae5ba74c97c1df54fcf13f5d315769db4fe2fd598eba6a11beec03",
+  "verdicts": [
+    {
+      "claim_id": "claim-001",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The cited method passage explicitly states that the distortion-minimizing estimator deviates from the natural-image manifold and produces smooth, over-regularized outputs under the perception-distortion trade-off."
+    },
+    {
+      "claim_id": "claim-002",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source directly describes distillation of a multi-step rectified-flow teacher's transported posterior mean into a single-step latent-consistency student."
+    },
+    {
+      "claim_id": "claim-003",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source explicitly introduces a parameter-efficient Semantic Adapter to condition transport on the local geometry of degradation."
+    },
+    {
+      "claim_id": "claim-004",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The source introduces Transport-Adaptive Low-Rank Adaptation and states that its matrices are applied to the student's UNet cross-attention and feed-forward blocks."
+    },
+    {
+      "claim_id": "claim-005",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The SGCL section explicitly says the loss leverages the frozen teacher as a pixel-space distributional critic."
+    },
+    {
+      "claim_id": "claim-006",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 1 supplies the stated DirectFlow row values and reports further FID and MUSIQ results for LFW-Test, WebPhoto-Test, and WIDER-Test."
+    },
+    {
+      "claim_id": "claim-007",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "The inference-efficiency figure identifies a 512x512 A6000 benchmark, and the figure and Table 1 support one-step execution with 0.289-second latency."
+    },
+    {
+      "claim_id": "claim-008",
+      "status": "supported",
+      "evidence_classification_correct": true,
+      "reason": "Table 3 reports the full-model values and shows worse LPIPS and FID after removing either the DINOv2 adapter or SGCL."
+    },
+    {
+      "claim_id": "claim-009",
+      "status": "supported",
+      "evidence_classification_correct": false,
+      "reason": "Table 4 lists the stated A100 GPU-hours, assumed 400 W power, energy, and emissions, but this is modeled carbon accounting using stated assumptions rather than an evidence modality of none stated or a direct power measurement."
+    }
+  ],
+  "objective_assessments": [
+    {
+      "criterion_id": "workshop_fit",
+      "score": 4,
+      "reason": "The central supported contribution is a single-step distilled generative restoration method with parameter-efficient adaptation and measured inference latency, directly addressing efficient generative inference and architecture.",
+      "evidence_claim_ids": [
+        "claim-002",
+        "claim-003",
+        "claim-004",
+        "claim-005",
+        "claim-007"
+      ],
+      "assumptions": [
+        "Single-step restoration and parameter-efficient adaptation are treated as core EDGE efficiency topics under the supplied objective definition."
+      ],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "evidence_strength",
+      "score": 4,
+      "reason": "The supported results include named perceptual and distortion metrics across synthetic and real-world datasets, many baselines, an A6000 latency result, and component ablations, although the efficiency workload and hardware coverage remain narrow.",
+      "evidence_claim_ids": [
+        "claim-006",
+        "claim-007",
+        "claim-008"
+      ],
+      "assumptions": [
+        "The tabulated baseline comparisons and component-removal study count as controlled evidence within the frozen experimental scope."
+      ],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "efficiency_result",
+      "score": 4,
+      "reason": "A 0.289-second one-NFE result is reported alongside quality metrics and numerous restoration baselines, making the speed-quality trade-off visible, though only one resolution and one disclosed inference device are covered.",
+      "evidence_claim_ids": [
+        "claim-006",
+        "claim-007"
+      ],
+      "assumptions": [
+        "Table 1 methods provide meaningful restoration baselines for the reported latency and quality comparison."
+      ],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "deployment_realism",
+      "score": 2,
+      "reason": "The source reports a physical A6000 inference benchmark, but it supplies no measurement on a claimed edge target and no end-to-end memory, energy, or thermal characterization for deployment.",
+      "evidence_claim_ids": [
+        "claim-007"
+      ],
+      "assumptions": [
+        "An A6000 is treated as non-target hardware for an edge-device deployment assessment."
+      ],
+      "uncertain": false
+    },
+    {
+      "criterion_id": "extension_leverage",
+      "score": 3,
+      "reason": "The supported one-step A6000 result motivates a concrete benchmark on representative edge accelerators that compares latency, memory, energy, and restoration quality against the same baselines.",
+      "evidence_claim_ids": [
+        "claim-006",
+        "claim-007"
+      ],
+      "assumptions": [
+        "The model can be exported to at least one representative edge inference runtime without changing its restoration semantics.",
+        "The cited restoration baselines can be run or reproduced on the same target device for a controlled comparison."
+      ],
+      "uncertain": true
+    }
+  ],
+  "human_review_reasons": [
+    "Feasibility of the proposed edge-device extension is uncertain because the frozen source provides only an A6000 inference result and no target-edge runtime, memory, energy, or thermal evidence."
+  ]
+}

@@ -33,6 +33,7 @@ REQUIRED_FIELDS = frozenset(
         "agent_run_id",
         "investigation_id",
         "paper_id",
+        "screening_batch_id",
         "role",
         "job_type",
         "attempt_no",

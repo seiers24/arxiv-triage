@@ -199,7 +199,11 @@ def critic_task_payload(*, inferred: bool = False) -> dict[str, object]:
             "source_text": NORMALIZED,
             "reader_record": reader.model_dump(),
             "objective_profile": objective_payload(),
-            "critic_rubric": {"component": "test-component", "skill_hash": None},
+            "critic_rubric": {
+                "component": "test-component",
+                "skill_hash": None,
+                "checks": [],
+            },
         },
         "input_hash",
     )
@@ -304,7 +308,11 @@ def reviewer_task() -> models.ReviewerTask:
             }
         ],
         "ranking_artifact": None,
-        "reviewer_rubric": {"component": "test-component", "skill_hash": None},
+        "reviewer_rubric": {
+            "component": "test-component",
+            "skill_hash": None,
+            "checks": [],
+        },
     }
     return models.ReviewerTask.model_validate(with_self_hash(payload, "input_hash"))
 
@@ -415,6 +423,7 @@ class CoreModelsV2Tests(unittest.TestCase):
             "reviewer_rubric": {
                 "component": "test-component",
                 "skill_hash": None,
+                "checks": [],
             },
         }
         task_payload["corpus_manifest"]["search_plan_hash"] = task_payload[
@@ -726,6 +735,7 @@ class CoreModelsV2Tests(unittest.TestCase):
         run_payload = {
             **outcome.model_dump(),
             "paper_id": "paper-1",
+            "screening_batch_id": None,
             "role": "paper_reader",
             "job_type": "paper_read",
             "attempt_no": 1,
@@ -750,6 +760,7 @@ class CoreModelsV2Tests(unittest.TestCase):
             "agent_run_id": "run-reader-1",
             "investigation_id": "inv-1",
             "paper_id": "paper-1",
+            "screening_batch_id": None,
             "role": "paper_reader",
             "job_type": "paper_read",
             "attempt_no": 1,
